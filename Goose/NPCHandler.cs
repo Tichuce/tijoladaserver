@@ -280,10 +280,16 @@ namespace Goose
          */
         public int GetNewID(GameWorld world)
         {
+            int min = world.Settings.MaxPlayers + 1;
+            int max = world.Settings.MaxNPCs;
+            if (this.idToNPC.Count >= max - min)
+                throw new InvalidOperationException(
+                    $"No free NPC login id in [{min}, {max}): {this.idToNPC.Count} in use. Raise MaxNPCs or reduce spawns.");
+
             int id;
             do
             {
-                id = world.Random.Next(world.Settings.MaxPlayers + 1, world.Settings.MaxNPCs);
+                id = world.Random.Next(min, max);
             } while (this.idToNPC.ContainsKey(id));
 
             return id;

@@ -69,6 +69,7 @@ namespace Goose
             if (missing.Count > 0)
                 log.Warn("GooseSettings.json is missing fields (defaulted to empty): {0}", string.Join(", ", missing));
             settings.ValidateQuestIconSettings();
+            settings.ValidateLoginIdSpace();
             return settings;
         }
     }

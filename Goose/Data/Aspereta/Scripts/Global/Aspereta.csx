@@ -321,7 +321,7 @@ public class AsperetaMode : BaseGlobalScript
                            player.MapX + "," +
                            player.MapY + "," +
                            (int)player.Facing + "," +
-                           (int)(((float)player.CurrentHP / player.MaxStats.HP) * 100) + "," + // HP %
+                           (int)Math.Clamp(player.MaxStats.HP > 0 ? ((float)player.CurrentHP / player.MaxStats.HP) * 100 : 0, 0, 100) + "," + // HP %
                            player.CurrentBodyID + "," +
                            (player.CurrentBodyID >= 100 ? 1 : pose) + "," +
                            (player.CurrentBodyID >= 100 ? 0 : player.HairID) + "," +
@@ -369,7 +369,7 @@ public class AsperetaMode : BaseGlobalScript
                            npc.MapX + "," +
                            npc.MapY + "," +
                            (int)npc.Facing + "," +
-                           (int)(((float)npc.CurrentHP / npc.MaxStats.HP) * 100) + "," + // HP %
+                           (int)Math.Clamp(npc.MaxStats.HP > 0 ? ((float)npc.CurrentHP / npc.MaxStats.HP) * 100 : 0, 0, 100) + "," + // HP %
                            npc.CurrentBodyID + "," +
                            (npc.CurrentBodyID >= 100 ? 1 : npc.BodyState) + "," +
                            (npc.CurrentBodyID >= 100 ? 0 : npc.HairID) + "," +
@@ -408,7 +408,7 @@ public class AsperetaMode : BaseGlobalScript
                            npc.MapX + "," +
                            npc.MapY + "," +
                            (int)npc.Facing + "," +
-                           (int)(((float)npc.CurrentHP / npc.MaxStats.HP) * 100) + "," + // HP %
+                           (int)Math.Clamp(npc.MaxStats.HP > 0 ? ((float)npc.CurrentHP / npc.MaxStats.HP) * 100 : 0, 0, 100) + "," + // HP %
                            npc.CurrentBodyID + "," +
                            (npc.CurrentBodyID >= 100 ? 1 : npc.BodyState) + "," +
                            (npc.CurrentBodyID >= 100 ? 0 : npc.HairID) + "," +
@@ -516,11 +516,11 @@ public class AsperetaMode : BaseGlobalScript
         P.VitalsPercentage = (target) =>
         {
             return "VC" + target.LoginID + "," +
-                   (int)(((float)target.CurrentHP / target.MaxHP) * 100) + "," +
-                   (int)(((float)target.CurrentMP / target.MaxMP) * 100);
+                   (int)Math.Clamp(target.MaxHP > 0 ? ((float)target.CurrentHP / target.MaxHP) * 100 : 0, 0, 100) + "," +
+                   (int)Math.Clamp(target.MaxMP > 0 ? ((float)target.CurrentMP / target.MaxMP) * 100 : 0, 0, 100);
         };
 
-        P.SpellSlot = (spell, slotId, targetType) =>
+        P.SpellSlot = (spell, slotId, targetType, extra) =>
         {
             if (spell == null)
             {
@@ -557,7 +557,7 @@ public class AsperetaMode : BaseGlobalScript
             return "EMOT" + target.LoginID + ",8";
         };
 
-        P.BuffBar = (buff, index, durationMs) =>
+        P.BuffBar = (buff, index, durationMs, extra) =>
         {
             if (buff == null)
             {
@@ -602,6 +602,283 @@ public class AsperetaMode : BaseGlobalScript
         {
             return "CST" + target.LoginID;
         };
+
+        // ---- DEBUG: writes every packet built by this script to packets.txt (next to the server exe) ----
+        var __lock = new object();
+        Action<string, string> __log = (name, pkt) =>
+        {
+            lock (__lock)
+            {
+                try
+                {
+                    System.IO.File.AppendAllText(
+                        System.IO.Path.Combine(AppContext.BaseDirectory, "packets.txt"),
+                        DateTime.Now.ToString("HH:mm:ss.fff") + " " + name + " => " + (pkt ?? "(null)") + "\n");
+                }
+                catch { }
+            }
+        };
+        {
+            var __o = P.ClassUpdate;
+            P.ClassUpdate = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("ClassUpdate", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.WindowTextLine;
+            P.WindowTextLine = (a0, a1, a2) =>
+            {
+                var __r = __o(a0, a1, a2);
+                __log("WindowTextLine", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.Emote;
+            P.Emote = (a0, a1) =>
+            {
+                var __r = __o(a0, a1);
+                __log("Emote", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.MakeObject;
+            P.MakeObject = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("MakeObject", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.SendCurrentMap;
+            P.SendCurrentMap = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("SendCurrentMap", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.MakeCharacter;
+            P.MakeCharacter = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("MakeCharacter", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.UpdateCharacter;
+            P.UpdateCharacter = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("UpdateCharacter", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.MakeNPCCharacter;
+            P.MakeNPCCharacter = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("MakeNPCCharacter", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.UpdateNPC;
+            P.UpdateNPC = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("UpdateNPC", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.MakePetCharacter;
+            P.MakePetCharacter = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("MakePetCharacter", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.UpdatePet;
+            P.UpdatePet = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("UpdatePet", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.InventorySlot;
+            P.InventorySlot = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("InventorySlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ClearInventorySlot;
+            P.ClearInventorySlot = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("ClearInventorySlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ItemSlot;
+            P.ItemSlot = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("ItemSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.EquipSlot;
+            P.EquipSlot = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("EquipSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ClearEquipSlot;
+            P.ClearEquipSlot = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("ClearEquipSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.BankSlot;
+            P.BankSlot = (a0, a1, a2, a3, a4) =>
+            {
+                var __r = __o(a0, a1, a2, a3, a4);
+                __log("BankSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ClearBankSlot;
+            P.ClearBankSlot = (a0, a1) =>
+            {
+                var __r = __o(a0, a1);
+                __log("ClearBankSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.VendorSlot;
+            P.VendorSlot = (a0, a1, a2, a3, a4) =>
+            {
+                var __r = __o(a0, a1, a2, a3, a4);
+                __log("VendorSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ClearVendor;
+            P.ClearVendor = () =>
+            {
+                var __r = __o();
+                __log("ClearVendor", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.VitalsPercentage;
+            P.VitalsPercentage = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("VitalsPercentage", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.SpellSlot;
+            P.SpellSlot = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("SpellSlot", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.SpellPlayer;
+            P.SpellPlayer = (a0, a1, a2) =>
+            {
+                var __r = __o(a0, a1, a2);
+                __log("SpellPlayer", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.SpellTile;
+            P.SpellTile = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("SpellTile", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.Tell;
+            P.Tell = (a0, a1) =>
+            {
+                var __r = __o(a0, a1);
+                __log("Tell", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.NPCAngryEmote;
+            P.NPCAngryEmote = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("NPCAngryEmote", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.BuffBar;
+            P.BuffBar = (a0, a1, a2, a3) =>
+            {
+                var __r = __o(a0, a1, a2, a3);
+                __log("BuffBar", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.ExpBar;
+            P.ExpBar = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("ExpBar", __r);
+                return __r;
+            };
+        }
+        {
+            var __o = P.Cast;
+            P.Cast = (a0) =>
+            {
+                var __r = __o(a0);
+                __log("Cast", __r);
+                return __r;
+            };
+        }
 	}
 }
 

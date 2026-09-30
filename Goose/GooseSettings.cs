@@ -175,5 +175,20 @@ namespace Goose
                     "Invalid quest icon pair QuestReadyIconSheet/QuestReadyIconGraphic: (" +
                     QuestReadyIconSheet + ", " + QuestReadyIconGraphic + ")");
         }
+
+        // AspGame.exe holds characters in a fixed array indexed 0..10000 by login id (VB6
+        // bounds check `cmp id, 2711h`); any higher id fails there and the character is never drawn.
+        public const int AsperetaClientMaxLoginId = 10000;
+
+        public void ValidateLoginIdSpace()
+        {
+            if (ServerType != "Aspereta") return;
+
+            if (MaxPlayers + MaxNPCs >= AsperetaClientMaxLoginId)
+                throw new FatalStartupException(
+                    "MaxPlayers (" + MaxPlayers + ") + MaxNPCs (" + MaxNPCs + ") must stay below " +
+                    AsperetaClientMaxLoginId + " for the Aspereta client: NPC and pet login ids " +
+                    "above that are invisible to it. Lower MaxNPCs in GooseSettings.json.");
+        }
     }
 }

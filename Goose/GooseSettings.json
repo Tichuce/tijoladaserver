@@ -1,11 +1,11 @@
 {
     "ServerVersion": "2.0.0",
 
-    // Aspereta Config
-    "ServerType": "Illutia",
+    
+    "ServerType": "Aspereta",
     "DatabaseName": "AsperetaGoose",
-    "DataLinkId": "1O2mbze7WGIt2JLeqDctR1zFSL6CdaNhf7iZlaqE4ieU",
-    "DataPath": "Data/Illutia",
+    "DataLinkId": "19V6ZbOan5468GK7R7u1BQaxYrtpLy-1ZM05yU0Y6CkU",
+    "DataPath": "Data/Aspereta",
     "ServerName": "Goose",
     "StartingMapID": 1,
     "StartingMapX": 50,
@@ -22,27 +22,7 @@
     "StartingFaceID": 2,
     "StartingHairID": 33,
 
-    // Illutia Config
-    // "ServerType": "Illutia",
-    // "DatabaseName": "IllutiaGoose",
-    // "DataLinkId": "1Ig7u4XHc1Vjk4Y1502bwHEVEDba3JTCUcrKwrcOPWyQ",
-    // "DataPath": "Data/Illutia",
-    // "ServerName": "Extrico",
-    // "StartingMapID": 2,
-    // "StartingMapX": 51,
-    // "StartingMapY": 182,
-    // "StartingItems": "2 3 48 48 48 48 48",
-    // "EquippedSize": 14,
-    // "SpellbookSize": 90,
-    // "StartingBodyState": 3,
-    // "StartingBankPages": 3,
-    // "BankSlotsPerPage": 30,
-    // "CustomTicketId": 677,
-    // "RippedCustomTicketId": 1575,
-    // "StartingFaceID": 2,
-    // "StartingHairID": 16,
-
-    // Common Config
+   
     "AutoCharacterCreation": true,
     "GameServerPort": 2006,
     "MaxPlayers": 200,
@@ -118,20 +98,16 @@
     "DefaultToggleSettings": 0,
     "NewCharactersPerDayPerIP": 3,
 
-    // Connection and login abuse limits.
-    // MaxConnections bounds all accepted sockets including ones not yet logged in;
-    // MaxPlayers above only bounds logged in players.
+    
     "MaxConnections": 1000,
     "MaxConnectionsPerIP": 8,
     "PreLoginTimeoutSeconds": 30,
-    // A key (source IP, and separately the account name) is locked out for
-    // LoginLockoutSeconds after LoginFailureLimit failures within
-    // LoginFailureWindowSeconds.
+    
     "LoginFailureLimit": 8,
     "LoginFailureWindowSeconds": 300,
     "LoginLockoutSeconds": 300,
 
-    "MaxNPCs": 250000,
+    "MaxNPCs": 9500,
     "PetVitaBuyAmount": 50,
     "IncreasePetVitaBuyCost": 100000,
     "PetVitaCost": 100000,
