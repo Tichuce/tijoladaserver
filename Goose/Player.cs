@@ -1360,6 +1360,102 @@ namespace Goose
             }
         }
         /**
+         * NextStepTo, returns direction to go to get to x,y
+         *
+         * 1,2,3,4 = up,right,down,left
+         *
+         */
+        public Direction NextStepTo(int x, int y, GameWorld world)
+        {
+            int nx, ny;
+            int dx, dy;
+
+            dx = x - this.MapX;
+            dy = y - this.MapY;
+
+            if (dx == 0 && dy == -1) return Direction.Up;
+            if (dx == 0 && dy == 1) return Direction.Down;
+            if (dx == 1 && dy == 0) return Direction.Right;
+            if (dx == -1 && dy == 0) return Direction.Left;
+
+            int shortestpath = Math.Abs(x - (this.MapX)) + Math.Abs(y - (this.MapY));
+            Direction shortest = Direction.Up;
+
+            int temp;
+            int f1 = 0, f2 = 0, f3 = 0, f4 = 0;
+            int d1 = 0, d2 = 0, d3 = 0, d4 = 0;
+            nx = this.MapX;
+            ny = this.MapY - 1;
+            if ((temp = (Math.Abs(x - nx) + Math.Abs(y - ny))) <= shortestpath)
+            {
+                d1 = 1;
+                if (this.CanMoveTo(nx, ny))
+                {
+                    shortestpath = temp;
+                    shortest = Direction.Up;
+                    f1++;
+                }
+            }
+
+            nx = this.MapX + 1;
+            ny = this.MapY;
+            if ((temp = (Math.Abs(x - nx) + Math.Abs(y - ny))) <= shortestpath)
+            {
+                d2 = 1;
+                if (this.CanMoveTo(nx, ny))
+                {
+                    shortestpath = temp;
+                    shortest = Direction.Right;
+                    f2++;
+                }
+            }
+
+            nx = this.MapX;
+            ny = this.MapY + 1;
+            if ((temp = (Math.Abs(x - nx) + Math.Abs(y - ny))) <= shortestpath)
+            {
+                d3 = 1;
+                if (this.CanMoveTo(nx, ny))
+                {
+                    shortestpath = temp;
+                    shortest = Direction.Down;
+                    f3++;
+                }
+            }
+
+            nx = this.MapX - 1;
+            ny = this.MapY;
+            if ((temp = (Math.Abs(x - nx) + Math.Abs(y - ny))) <= shortestpath)
+            {
+                d4 = 1;
+                if (this.CanMoveTo(nx, ny))
+                {
+                    shortestpath = temp;
+                    shortest = Direction.Left;
+                    f4++;
+                }
+            }
+            nx = this.MapX;
+            ny = this.MapY;
+            if ((f1 == f2) && (f1 == 1)) { shortest = (Math.Abs(x - nx) > Math.Abs(y - ny)) ? Direction.Right : Direction.Up; }
+            if ((f1 == f4) && (f1 == 1)) { shortest = (Math.Abs(x - nx) > Math.Abs(y - ny)) ? Direction.Left : Direction.Up; }
+            if ((f2 == f3) && (f2 == 1)) { shortest = (Math.Abs(x - nx) > Math.Abs(y - ny)) ? Direction.Right : Direction.Down; }
+            if ((f3 == f4) && (f3 == 1)) { shortest = (Math.Abs(x - nx) > Math.Abs(y - ny)) ? Direction.Left : Direction.Down; }
+
+            int rand = 0;
+
+            if (shortestpath == Math.Abs(x - (this.MapX)) + Math.Abs(y - (this.MapY)))
+            {
+                rand = world.Random.Next(1, 3);
+                if (d1 == 1) { shortest = (rand == 1) ? Direction.Right : Direction.Left; }
+                if (d2 == 1) { shortest = (rand == 1) ? Direction.Up : Direction.Down; }
+                if (d3 == 1) { shortest = (rand == 1) ? Direction.Right : Direction.Left; }
+                if (d4 == 1) { shortest = (rand == 1) ? Direction.Up : Direction.Down; }
+            }
+            return shortest;
+        }
+
+        /**
          * WarpTo, warps player to map, x, y
          * Defaults to losing aggro
          *
@@ -1374,6 +1470,8 @@ namespace Goose
          */
         public void WarpTo(GameWorld world, Map map, int x, int y, bool loseaggro)
         {
+            this.StopAutoHunt(world, "you changed location.");
+
             string erc = P.EraseCharacter(this.LoginID);
             foreach (var player in this.Map.GetPlayersInRange(this))
             {
@@ -2493,6 +2591,78 @@ namespace Goose
 
         // Session-only: deliberately not persisted (login is always dismounted).
         public bool Mounted { get; set; }
+
+        public AutoHuntEvent? AutoHuntEvent { get; private set; }
+        public NPC? AutoHuntTarget { get; set; }
+        public int AutoHuntMapID { get; private set; }
+        public int AutoHuntOriginX { get; private set; }
+        public int AutoHuntOriginY { get; private set; }
+        public int AutoHuntFailedSteps { get; set; }
+        public int AutoHuntChaseSteps { get; set; }
+        public HashSet<NPC> AutoHuntIgnored { get; } = [];
+        public bool IsAutoHunting => this.AutoHuntEvent is not null;
+        // Paused keeps the session alive but idle: no fighting or walking, and manual movement,
+        // low HP or vendors don't end it. Map changes and logout still do.
+        public bool AutoHuntPaused { get; private set; }
+
+        public void StartAutoHunt(GameWorld world)
+        {
+            if (this.IsAutoHunting) return;
+
+            this.AutoHuntMapID = this.MapID;
+            this.AutoHuntOriginX = this.MapX;
+            this.AutoHuntOriginY = this.MapY;
+            this.AutoHuntTarget = null;
+            this.AutoHuntFailedSteps = 0;
+            this.AutoHuntChaseSteps = 0;
+            this.AutoHuntIgnored.Clear();
+            this.AutoHuntPaused = false;
+
+            var ev = new AutoHuntEvent { Player = this };
+            this.AutoHuntEvent = ev;
+            world.EventHandler.AddEvent(ev);
+
+            world.Send(this, P.ServerMessage("Auto-hunt started. Moving or typing /autohunt off stops it."));
+        }
+
+        public void StopAutoHunt(GameWorld world, string? reason)
+        {
+            if (!this.IsAutoHunting) return;
+
+            this.AutoHuntEvent = null;
+            this.AutoHuntTarget = null;
+            this.AutoHuntIgnored.Clear();
+            this.AutoHuntPaused = false;
+
+            if (reason is not null)
+                world.Send(this, P.ServerMessage("Auto-hunt stopped: " + reason));
+        }
+
+        public void PauseAutoHunt(GameWorld world)
+        {
+            if (!this.IsAutoHunting || this.AutoHuntPaused) return;
+
+            this.AutoHuntPaused = true;
+            this.AutoHuntTarget = null;
+
+            world.Send(this, P.ServerMessage("Auto-hunt paused. /autohunt on resumes it, /autohunt off stops it."));
+        }
+
+        // Resumes around the player's current spot, since they may have walked while paused.
+        public void ResumeAutoHunt(GameWorld world)
+        {
+            if (!this.IsAutoHunting || !this.AutoHuntPaused) return;
+
+            this.AutoHuntPaused = false;
+            this.AutoHuntOriginX = this.MapX;
+            this.AutoHuntOriginY = this.MapY;
+            this.AutoHuntTarget = null;
+            this.AutoHuntFailedSteps = 0;
+            this.AutoHuntChaseSteps = 0;
+            this.AutoHuntIgnored.Clear();
+
+            world.Send(this, P.ServerMessage("Auto-hunt resumed."));
+        }
 
         public bool IsMounted(GameWorld world)
         {

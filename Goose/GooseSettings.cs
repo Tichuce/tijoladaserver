@@ -125,6 +125,11 @@ namespace Goose
         public int LoginLockoutSeconds { get; set; } = 300;
 
         public int MaxNPCs { get; set; }
+
+        public bool AutoHuntEnabled { get; set; } = true;
+        public int AutoHuntRadius { get; set; } = 12;
+        public int AutoHuntMinHPPercent { get; set; } = 30;
+        public int AutoHuntStepMilliseconds { get; set; } = 350;
         public int PetVitaBuyAmount { get; set; }
         public int IncreasePetVitaBuyCost { get; set; }
         public int PetVitaCost { get; set; }

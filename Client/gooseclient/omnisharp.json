@@ -1,0 +1,6 @@
+{
+    "Script": {
+        "EnableScriptNuGetReferences": true,
+        "RspFilePath": "ScriptReferences.rsp"
+    }
+}

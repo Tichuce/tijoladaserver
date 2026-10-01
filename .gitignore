@@ -53,3 +53,6 @@ __pycache__/
 
 # generated boss tracker page
 boss_tracker.html
+
+# Client run folder (build output + local game data)
+Client/run/

@@ -1,0 +1,160 @@
+TODO list
+----------------------------------------------
+Next release:
+
+Add smooth scrolling
+Server picker
+Tooltips don't update if mouse is over them
+
+Support names/vita/etc commands and config settings
+Hide console window
+cursor image
+
+windows need to check if they're focused before events
+
+Loading screen on client launch (for loading datafiles)
+Alt enter
+Rounded tooltips
+word wrap bug
+Follow command
+Target lock heal. Hold button to heal last target without spamming 1 + enter.
+
+----------------------------------------------
+Future future extended things:
+
+Patcher
+Server browser (or at least a server selection screen from saved servers)
+
+
+----------------------------------------------
+Done:
+
+2020-02-19
+Show items on the ground
+Erase items on ground
+Pickup items on ground
+
+2020-02-20
+Fix typing in chat from opening windows
+AD4 Warr sword renders too high. Spells render too high. Wonder if both of these problems are related
+Fix window draw order so active window draws on top
+Chat hotkey buttons
+Command aliases
+/quit
+Hotkey bar
+Remember window positions
+Buff bar
+Battletext
+
+2020-02-22
+Melee
+Tab support for login screen -- plus focus tweaks to make nicer
+chatbox TODO: Remove older lines when > some number of lines
+Fixed illusions/errors when having stuff equipped that is either invalid or has no animation
+Drop items from inventory
+Maybe decouple loading from framerate somehow? Or at least maybe load more per frame
+Option for vsync
+Option for fixed 2x scaling
+Option for fullscreen (with alt enter too)
+Option for borderless window
+
+
+build script:
+dotnet publish -c Release -r win-x64 --self-contained false
+dotnet publish -c Release -r osx-x64 --self-contained false
+dotnet publish -c Release -r linux-x64 --self-contained false
+
+
+2020-02-23
+Vendor windows
+Ranks window
+Item description window
+
+
+2020-02-24
+when first loading in and trying to type with a number in the chat, it casts spell (need to test, may be fixed now)
+Support button_close for vendor windows in other skin
+Party window
+Button bar window -- tooltips need to move to left if they go off screen
+tooltips on hp/mp/sp/xp bars
+
+2020-02-25
+facing left, weapon needs to draw below body
+Combine bag window
+
+2020-02-26
+Tooltip for items on ground
+
+2020-02-29
+fix double click speed
+colour for dragged items
+Destroy button
+Reorder spellbook
+Bug with dragging windows to edge of screen
+name colour when in party with someone
+GM name colours
+Chatbox wordwrap sometimes wraps words at the wrong point (splits middle of word)
+Chat bubbles
+Emoticons
+
+
+2020-03-03
+bug with mouseover tiles when screen is resized to super small
+
+2020-03-06
+Fix textboxes to scroll properly
+/filter pickup command
+Chat input history with up/down arrows in chatbox
+
+2020-03-07
+combine bag window offsets are wrong
+/autopickup command
+
+
+2020-03-18
+Fixed crash when right clicking vendor twice
+Fixed crash when receiving too many buffs to display
+Added protocol extension (for my server, hopefully Josh's soon) to display full uncapped xp banked value on my client
+Fix crash when server sends a valid packet prefix but invalid data (not sure what happened, but happened with $ packet before)
+Fix teleporting npcs slowly moving to spot
+Fixed command aliases (/h) not working
+fix targetting being able to keep target off screen
+Fixed bug where able to get chat box stuck hidden
+large resolution mode (800x600 -- same as Illutia)
+
+2020-03-21
+Fix pressing comma in chat picks up items
+Fix bug in packet receiving ignoring packets that were split
+Add SP window
+Fix autopickup to only pick up if item is under you
+
+2020-03-22
+Fix tint colour rendering
+Split inventory items
+Fix map item tooltips staying on screen after moving character and mouse no longer on an item.
+Load chat colours from user settings. This supports r,g,b,a format for colours as well as the colour name aliases
+Script to build/package release
+
+2020-04-14
+Fix crashes when being killed by player
+Socket error receiving data: System.NullReferenceException: Object reference not set to an instance of an object.
+   at AsperetaClient.Map.OnSpellTile(Object packet) in /home/hayden/code/GooseClient/AsperetaClient/Map.cs:line 486
+   at AsperetaClient.PacketHandler.CallObservers(Object obj) in /home/hayden/code/GooseClient/AsperetaClient/PacketHandler.cs:line 18
+   at AsperetaClient.PacketManager.Handle(String packet) in /home/hayden/code/GooseClient/AsperetaClient/PacketHandler.cs:line 64
+   at AsperetaClient.NetworkClient.Update() in /home/hayden/code/GooseClient/AsperetaClient/NetworkClient.cs:line 133
+Unhandled exception. System.NullReferenceException: Object reference not set to an instance of an object.
+   at AsperetaClient.Map.Render(Int32 start_x, Int32 start_y) in /home/hayden/code/GooseClient/AsperetaClient/Map.cs:line 170
+   at AsperetaClient.GameScreen.Render(Double dt) in /home/hayden/code/GooseClient/AsperetaClient/GameScreen.cs:line 158
+   at AsperetaClient.StateManager.Render(Double dt) in /home/hayden/code/GooseClient/AsperetaClient/StateManager.cs:line 98
+   at AsperetaClient.GameClient.Run() in /home/hayden/code/GooseClient/AsperetaClient/GameClient.cs:line 163
+   at AsperetaClient.Program.Main(String[] args) in /home/hayden/code/GooseClient/AsperetaClient/Program.cs:line 11
+
+2020-04-18
+Fix crash when pressing up/down when haven't typed anything before
+Fix crash when pressing end in chatbox
+Fix rendering order to render hair after chest equipment
+
+2020-04-19
+Login screen skin can be edited through skin/Window.ini now
+On socket exception go back to login screen and show Disconnected message
+Fix button on connecting window and message window to work in different skins

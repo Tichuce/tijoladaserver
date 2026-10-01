@@ -20,6 +20,8 @@ namespace Goose.Events
             if (this.Player.State == Player.States.Ready)
             {
                 this.Player.UpdateIdleStatus(world);
+                if (!this.Player.AutoHuntPaused)
+                    this.Player.StopAutoHunt(world, "you moved.");
 
                 foreach (var b in this.Player.Buffs)
                 {

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- WinExe: runs as a normal Windows app, without a console window. -->
+    <OutputType>WinExe</OutputType>
+    <!-- Was net8; retargeted to net10.0 to match the .NET 10 SDK/runtime used by the server. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <!-- Removed RuntimeIdentifiers (linux-x64;win-x64;osx-x64;win-x86): it made every restore download
+         runtime packs for four platforms. "dotnet publish -r <rid>" still works without it. -->
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.9.2" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="CsvToSql.Core">
+      <HintPath>../libs/CsvToSql.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Native SDL libraries (64-bit Windows) must sit next to the exe. -->
+  <ItemGroup>
+    <None Include="../libs/SDL2.dll" Link="SDL2.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../libs/SDL2_image.dll" Link="SDL2_image.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

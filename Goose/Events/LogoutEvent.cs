@@ -40,6 +40,8 @@ namespace Goose.Events
             }
             else
             {
+                player.StopAutoHunt(world, null);
+
                 if (player.Map is not null)
                 {
                     List<Player> range = player.Map.GetPlayersInRange(player);

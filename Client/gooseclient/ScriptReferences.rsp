@@ -1,0 +1,7 @@
+/r:AsperetaClient/bin/Debug/net8/AsperetaClient.dll
+/r:AsperetaClient/bin/Release/net8/AsperetaClient.dll
+/u:System
+/u:System.Collections.Generic
+/u:System.Linq
+/u:AsperetaClient
+/u:AsperetaClient.Scripting.GameState
