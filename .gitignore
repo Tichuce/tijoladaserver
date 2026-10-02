@@ -56,3 +56,10 @@ boss_tracker.html
 
 # Client run folder (build output + local game data)
 Client/run/
+
+# Browser client: converted game assets (regenerate with Client/web/convert-assets.bat),
+# local tool output and scratch logs.
+Client/web/www/assets/
+Client/web/client/node_modules/
+Client/web/client/.test-build/
+Client/web/claude-check.log

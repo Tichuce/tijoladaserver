@@ -1,0 +1,39 @@
+==== build 01/10/2026 22:31:15,12 
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est√£o atualizados para restaura√ß√£o.
+  AsperetaWeb -> C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\tools\AsperetaWeb\bin\Release\net10.0\AsperetaWeb.dll
+
+Compila√ß√£o com √™xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.89
+build exit 0 
+==== export 
+  item_templates: 950 rows
+  npc_templates: 317 rows
+  npc_drops: 874 rows
+  npc_vendor_items: 256 rows
+  npc_spawns: 7416 rows
+  spells: 188 rows
+  spell_effects: 387 rows
+  classes: 6 rows
+  classes_levelup_spells: 25 rows
+  maps: 173 rows
+  map_required_items: 3 rows
+  quests: 10 rows
+  quest_requirements: 8 rows
+  quest_rewards: 25 rows
+  combinations: 67 rows
+  combination_item_required: 283 rows
+  combination_item_results: 67 rows
+  item_titles: 4 rows
+  item_surnames: 5 rows
+Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\wiki\data.js (477 KB)
+Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\wiki\assets-index.js (pictures from C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\assets)
+Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\aspereta-wiki.html (5075 KB, 462 sprite sheets inlined)
+export exit 0 
+==== node 
+INFORMAÄÂES: n∆o foi poss°vel localizar arquivos para o(s) padr∆o(‰es) especificado(s).
+INFORMAÄÂES: n∆o foi poss°vel localizar arquivos para o(s) padr∆o(‰es) especificado(s).
+==== done 

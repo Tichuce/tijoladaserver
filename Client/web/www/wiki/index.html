@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aspereta Wiki</title>
+  <link rel="stylesheet" href="wiki.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/items">Aspereta <span>Wiki</span></a>
+    <div class="global-search">
+      <input id="global-search" type="search" placeholder="Search everything…" autocomplete="off" spellcheck="false" aria-label="Search everything">
+      <div id="global-results" hidden></div>
+    </div>
+    <a class="play" href="../index.html">Play</a>
+  </header>
+
+  <nav id="sections" aria-label="Sections"></nav>
+
+  <main id="app">
+    <p class="loading">Loading game data…</p>
+  </main>
+
+  <footer id="footer"></footer>
+
+  <!-- Classic scripts (not modules) so the wiki also works when opened straight from disk. -->
+  <script src="data.js"></script>
+  <script src="assets-index.js" onerror="void 0"></script>
+  <script src="wiki-model.js"></script>
+  <script src="wiki.js"></script>
+</body>
+</html>

@@ -165,12 +165,90 @@ public class AutoHuntTests : IDisposable
     }
 
     [Fact]
-    public void Tick_LowHp_StopsWithMessage()
+    public void Tick_AutoHuntSwing_IsShownToTheHuntersOwnClient()
     {
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(11, 10);
+        player.StartAutoHunt(world);
+        player.SendBuffer.Clear();
+
+        Tick(player, world);
+
+        Assert.Contains("ATT" + player.LoginID + "\x1", Buffer(player));
+    }
+
+    [Fact]
+    public void Tick_SwingStillOnCooldown_SendsNoAttack()
+    {
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(11, 10);
+        player.StartAutoHunt(world);
+        Tick(player, world);
+        player.SendBuffer.Clear();
+
+        Tick(player, world); // same instant: the weapon delay has not passed
+
+        Assert.DoesNotContain("ATT" + player.LoginID + "\x1", Buffer(player));
+    }
+
+    [Fact]
+    public void LowHpThreshold_DefaultsToFivePercent()
+    {
+        Assert.Equal(5, new GooseSettings().AutoHuntMinHPPercent);
+    }
+
+    [Fact]
+    public void Tick_HpJustAboveFivePercent_KeepsHunting()
+    {
+        world.Settings.AutoHuntMinHPPercent = 5;
         var player = PlacePlayer(10, 10);
         SpawnNpc(14, 10);
         player.StartAutoHunt(world);
-        player.CurrentHP = 10;
+        player.CurrentHP = 6;
+
+        Tick(player, world);
+
+        Assert.True(player.IsAutoHunting);
+        Assert.Equal((11, 10), (player.MapX, player.MapY));
+    }
+
+    [Fact]
+    public void Tick_HpAtExactlyFivePercent_Stops()
+    {
+        world.Settings.AutoHuntMinHPPercent = 5;
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(14, 10);
+        player.StartAutoHunt(world);
+        player.CurrentHP = 5;
+
+        Tick(player, world);
+
+        Assert.False(player.IsAutoHunting);
+    }
+
+    [Fact]
+    public void Tick_LowHp_StopsEvenWhenNoNearbyNpcHasAggroRange()
+    {
+        world.Settings.AutoHuntMinHPPercent = 5;
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(11, 10); // adjacent, AggroRange 0
+        player.StartAutoHunt(world);
+        player.CurrentHP = 3;
+
+        Tick(player, world);
+
+        Assert.False(player.IsAutoHunting);
+        Assert.Equal(0, player.LastAttack);
+    }
+
+    [Fact]
+    public void Tick_LowHp_StopsWithMessage()
+    {
+        world.Settings.AutoHuntMinHPPercent = 5;
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(14, 10);
+        player.StartAutoHunt(world);
+        player.CurrentHP = 4;
         player.SendBuffer.Clear();
 
         Tick(player, world);

@@ -1,0 +1,14 @@
+{
+  "name": "aspereta-web-client",
+  "private": true,
+  "description": "Browser client for the Goose/Aspereta server (Phase 1 prototype). Compiled output lives in ../www/js.",
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/test/protocol.test.js .test-build/test/skin.test.js test/wiki.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "type": "module"
+}

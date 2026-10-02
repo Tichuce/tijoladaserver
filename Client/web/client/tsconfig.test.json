@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": []
+  },
+  "include": [
+    "src/protocol.ts",
+    "src/assets.ts",
+    "src/autohunt.ts",
+    "src/skin.ts",
+    "test/**/*.ts"
+  ]
+}

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aspereta Web</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <form id="login" class="panel" autocomplete="on">
+      <h1>Aspereta</h1>
+      <p class="sub">Browser client · local prototype</p>
+
+      <label>Character
+        <input id="username" name="username" autocomplete="username" maxlength="32" spellcheck="false">
+      </label>
+      <label>Password
+        <input id="password" name="password" type="password" autocomplete="current-password">
+      </label>
+      <details>
+        <summary>Server</summary>
+        <label>WebSocket address
+          <input id="server" name="server" spellcheck="false">
+        </label>
+      </details>
+
+      <button id="login-button" type="submit">Enter</button>
+      <p id="login-error" class="error" role="alert"></p>
+      <p class="wiki-link"><a href="wiki/">Game wiki</a> · items, creatures, spells, quests</p>
+    </form>
+
+    <div id="game" hidden>
+      <div class="main-col">
+        <div class="bar">
+          <span id="map-name"></span>
+          <span class="right">
+            <span id="status" data-phase="connecting">Connecting…</span>
+            <button id="look" type="button" class="small" hidden>Classic look</button>
+            <button id="logout" type="button" class="small">Log out</button>
+          </span>
+        </div>
+
+        <div class="screen-wrap">
+          <canvas id="screen" width="640" height="480" tabindex="0" aria-label="Game view"></canvas>
+          <div id="windows"></div>
+          <div id="overlay" hidden>
+            <p id="overlay-text"></p>
+            <div id="overlay-actions" hidden>
+              <button id="reconnect" type="button">Reconnect</button>
+              <button id="back" type="button" class="secondary">Back to login</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="hotbar" title="Drag items or spells here · 1-0 or double-click to use · right-click to clear"></div>
+
+        <div id="chat-log" aria-live="polite"></div>
+        <input id="chat-input" maxlength="200" placeholder="Press Enter to chat · /command for commands" spellcheck="false">
+        <p class="hint">Arrows move · Space attacks · , picks up · 1-0 hotkeys · double-click a character to interact, right-click to look · Enter chats (/ G T R open it with a command) · I / E / S switch panels</p>
+      </div>
+
+      <aside class="side-col">
+        <section class="card">
+          <div class="who">
+            <b id="char-name"></b>
+            <span id="char-class"></span>
+          </div>
+          <div class="meter hp"><div id="hp-fill"></div><span>HP</span><em id="hp-text"></em></div>
+          <div class="meter mp"><div id="mp-fill"></div><span>MP</span><em id="mp-text"></em></div>
+          <div class="meter sp"><div id="sp-fill"></div><span>SP</span><em id="sp-text"></em></div>
+          <div class="meter xp"><div id="xp-fill"></div><span>XP</span><em id="xp-text"></em></div>
+          <div class="gold-row"><span>Gold</span><b id="gold">0</b></div>
+        </section>
+
+        <section id="party" class="card" hidden aria-label="Party"></section>
+
+        <button id="autohunt" type="button" data-state="off" title="Click: start / pause · Right-click: stop">Auto-hunt OFF</button>
+
+        <div id="buffs" aria-label="Active buffs"></div>
+
+        <div class="tabs" role="tablist">
+          <button type="button" data-tab="inventory" class="active">Inventory</button>
+          <button type="button" data-tab="equipment">Equip</button>
+          <button type="button" data-tab="spells">Spells</button>
+          <button type="button" data-tab="stats">Stats</button>
+        </div>
+        <div id="inventory" class="tab-panel grid"></div>
+        <div id="equipment" class="tab-panel" hidden></div>
+        <div id="spells" class="tab-panel grid" hidden></div>
+        <div id="stats" class="tab-panel" hidden></div>
+        <p class="hint">Double-click to use, cast or unequip · drag to move, equip or drop · right-click for details · Ctrl+drag splits a stack</p>
+      </aside>
+    </div>
+  </main>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
