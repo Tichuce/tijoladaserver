@@ -13,6 +13,7 @@ public class TestWorldFixture : IDisposable
 
     public TestWorldFixture(Action<GooseSettings>? configure = null)
     {
+        ServerCulture.Apply();
         DataDirectory = Path.Combine(Path.GetTempPath(), "test-world-" + Guid.NewGuid().ToString("N"));
         foreach (var dir in new[] { "Global", "Global/Dimensions" })
             Directory.CreateDirectory(Path.Combine(DataDirectory, "Scripts", dir));
@@ -198,6 +199,20 @@ public class TestWorldFixture : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(DataDirectory)) Directory.Delete(DataDirectory, recursive: true);
+        World.Database.Stop();
+        System.Data.SQLite.SQLiteConnection.ClearAllPools();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        for (int attempt = 0; Directory.Exists(DataDirectory); attempt++)
+        {
+            try
+            {
+                Directory.Delete(DataDirectory, recursive: true);
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                Thread.Sleep(50);
+            }
+        }
     }
 }

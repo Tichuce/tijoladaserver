@@ -12,6 +12,9 @@ namespace Goose
          */
         static void Main(string[] args)
         {
+            // Game text and GM input use '.' decimals whatever the host's regional settings are.
+            ServerCulture.Apply();
+
             // Resolve paths and logging before anything loads settings. With no --datadir,
             // Paths defaults everything to the app base directory, matching historical behaviour.
             Paths.Initialize(ParseDataDir(args));
