@@ -12,6 +12,7 @@ import { AutoHuntTracker } from "./autohunt.js";
 import { OneShot } from "./character.js";
 import { Connection } from "./connection.js";
 import { ChatType, ClientPackets, Direction, LINE_CLICK_COUNT, WindowFrame, parsePacket } from "./protocol.js";
+import { LogViewerState } from "./logviewer.js";
 import { World } from "./world.js";
 export const INVENTORY_SLOTS = 30;
 /** Paper-doll slots in the character window (WNF11 lines). */
@@ -277,7 +278,10 @@ export class Session {
                 break;
             case "makeWindow":
                 // A repeat MKW for the same id (paging) replaces the window's contents.
-                this.windows.set(p.window.id, { ...p.window, lines: [], opening: null, shown: false });
+                this.windows.set(p.window.id, {
+                    ...p.window, lines: [], opening: null, shown: false,
+                    log: p.window.frame === WindowFrame.LogViewer ? new LogViewerState(p.window.id) : null,
+                });
                 this.events.stateChanged();
                 break;
             case "windowLine":
@@ -310,6 +314,16 @@ export class Session {
                 this.events.stateChanged();
                 break;
             }
+            case "logType":
+            case "logMap":
+            case "logRange":
+            case "logBegin":
+            case "logChunk":
+            case "logFinish":
+            case "logError":
+                if (this.windows.get(p.windowId)?.log?.handle(p))
+                    this.events.stateChanged();
+                break;
             case "buffSlot":
                 if (p.slot >= 0 && p.slot < 40) {
                     this.buffs[p.slot] = p.buff;
@@ -565,6 +579,27 @@ export class Session {
             w.shown = false;
             this.windows.delete(windowId);
         }
+        this.events.stateChanged();
+    }
+    logSearch(windowId, filters) {
+        const log = this.windows.get(windowId)?.log;
+        if (!log || !this.world)
+            return null;
+        const result = log.fresh(filters, Date.now());
+        if ("error" in result)
+            return result.error;
+        this.connection.send(result.packet);
+        this.events.stateChanged();
+        return null;
+    }
+    logPage(windowId, forward) {
+        const log = this.windows.get(windowId)?.log;
+        if (!log || !this.world)
+            return;
+        const packet = forward ? log.next() : log.previous();
+        if (!packet)
+            return;
+        this.connection.send(packet);
         this.events.stateChanged();
     }
     /** Removes a buff from the buff bar, if its effect allows it (KBUF, 1-based like BUF). */

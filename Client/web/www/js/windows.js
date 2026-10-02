@@ -5,6 +5,7 @@
 // Two looks: the game's skin (when converted and the classic look is on), laid out from
 // Window.ini exactly like the desktop client's BaseWindow; otherwise simple floating panels.
 import { dropTarget, setDrag } from "./dnd.js";
+import { LogView } from "./logview.js";
 import { WINDOW_BUTTONS, WindowFrame } from "./protocol.js";
 import { setTip } from "./tooltip.js";
 import { BUTTON_NAMES, CHAR_H, CHAR_W, FONT_SHEET, drawGameText, objectPosition, skinSectionForFrame, wrapText } from "./skin.js";
@@ -28,6 +29,7 @@ export class Windows {
         this.classic = false;
         this.zTop = 1;
         this.elements = new Map();
+        this.logViews = new Map();
         this.positions = new Map();
     }
     attach(session) {
@@ -38,9 +40,12 @@ export class Windows {
     setLook(skin, classic) {
         this.skin = skin;
         this.classic = classic && !!skin;
-        for (const el of this.elements.values())
+        for (const [id, el] of this.elements) {
+            if (this.logViews.has(id))
+                continue;
             el.remove();
-        this.elements.clear();
+            this.elements.delete(id);
+        }
         this.render();
     }
     render() {
@@ -50,6 +55,10 @@ export class Windows {
             if (!w.shown)
                 continue;
             shown.add(w.id);
+            if (w.log) {
+                this.renderLog(w);
+                continue;
+            }
             const skinned = this.skinFor(w);
             let el = this.elements.get(w.id);
             if (el && el.dataset.frame !== String(w.frame)) {
@@ -72,7 +81,33 @@ export class Windows {
                 continue;
             el.remove();
             this.elements.delete(id);
+            this.logViews.delete(id);
         }
+    }
+    renderLog(w) {
+        let view = this.logViews.get(w.id);
+        if (view && this.elements.get(w.id) !== view.root)
+            view = undefined;
+        if (!view) {
+            this.elements.get(w.id)?.remove();
+            const id = w.id;
+            view = new LogView(w.log, {
+                search: (filters) => (this.session ? this.session.logSearch(id, filters) : "Not connected."),
+                page: (forward) => this.session?.logPage(id, forward),
+                close: () => this.session?.windowButton(id, 1),
+            }, `log-maps-${id}`);
+            const el = view.root;
+            const pos = this.positions.get("log-viewer") ?? [16, 16];
+            el.style.left = `${pos[0]}px`;
+            el.style.top = `${pos[1]}px`;
+            el.addEventListener("pointerdown", () => this.focus(id), { capture: true });
+            this.makeDraggable(el, view.handle, "log-viewer");
+            this.logViews.set(id, view);
+            this.elements.set(id, el);
+            this.layer.appendChild(el);
+            this.focus(id);
+        }
+        view.update();
     }
     skinFor(w) {
         if (!this.classic || !this.skin)

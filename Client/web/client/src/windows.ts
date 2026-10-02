@@ -7,6 +7,7 @@
 
 import { Assets } from "./assets.js";
 import { dropTarget, setDrag } from "./dnd.js";
+import { LogView } from "./logview.js";
 import { WINDOW_BUTTONS, WindowFrame, WindowLine } from "./protocol.js";
 import { GameWindow, Session } from "./session.js";
 import { setTip } from "./tooltip.js";
@@ -31,6 +32,7 @@ export class Windows {
   private classic = false;
   private zTop = 1;
   private readonly elements = new Map<number, HTMLElement>();
+  private readonly logViews = new Map<number, LogView>();
   private readonly positions = new Map<string, [number, number]>();
 
   constructor(private readonly layer: HTMLElement, private readonly assets: Assets, private readonly iconFor: IconFor) {}
@@ -44,8 +46,11 @@ export class Windows {
   setLook(skin: Skin | null, classic: boolean): void {
     this.skin = skin;
     this.classic = classic && !!skin;
-    for (const el of this.elements.values()) el.remove();
-    this.elements.clear();
+    for (const [id, el] of this.elements) {
+      if (this.logViews.has(id)) continue;
+      el.remove();
+      this.elements.delete(id);
+    }
     this.render();
   }
 
@@ -55,6 +60,10 @@ export class Windows {
     for (const w of s?.windows.values() ?? []) {
       if (!w.shown) continue;
       shown.add(w.id);
+      if (w.log) {
+        this.renderLog(w);
+        continue;
+      }
       const skinned = this.skinFor(w);
       let el = this.elements.get(w.id);
       if (el && el.dataset.frame !== String(w.frame)) {
@@ -74,7 +83,33 @@ export class Windows {
       if (shown.has(id)) continue;
       el.remove();
       this.elements.delete(id);
+      this.logViews.delete(id);
     }
+  }
+
+  private renderLog(w: GameWindow): void {
+    let view = this.logViews.get(w.id);
+    if (view && this.elements.get(w.id) !== view.root) view = undefined;
+    if (!view) {
+      this.elements.get(w.id)?.remove();
+      const id = w.id;
+      view = new LogView(w.log!, {
+        search: (filters) => (this.session ? this.session.logSearch(id, filters) : "Not connected."),
+        page: (forward) => this.session?.logPage(id, forward),
+        close: () => this.session?.windowButton(id, 1),
+      }, `log-maps-${id}`);
+      const el = view.root;
+      const pos = this.positions.get("log-viewer") ?? [16, 16];
+      el.style.left = `${pos[0]}px`;
+      el.style.top = `${pos[1]}px`;
+      el.addEventListener("pointerdown", () => this.focus(id), { capture: true });
+      this.makeDraggable(el, view.handle, "log-viewer");
+      this.logViews.set(id, view);
+      this.elements.set(id, el);
+      this.layer.appendChild(el);
+      this.focus(id);
+    }
+    view.update();
   }
 
   private skinFor(w: GameWindow): SkinWindow | null {

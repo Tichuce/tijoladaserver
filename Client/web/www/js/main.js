@@ -363,7 +363,8 @@ const heldKeys = [];
 window.addEventListener("keydown", (ev) => {
     if (gamePanel.hidden || document.activeElement === chatInput)
         return;
-    if (document.activeElement instanceof HTMLInputElement)
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement || active instanceof HTMLTextAreaElement)
         return;
     // Choosing a spell target takes the arrows, Enter and Esc (Map.HandleEvent).
     if (session?.targeting) {

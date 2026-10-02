@@ -108,6 +108,11 @@ pointing at your IP: the server would then see Cloudflare's addresses instead of
 
 ## Notes
 
+- Cloudflare keeps `.js` and `.css` files in its cache for hours. The web server therefore
+  adds a version to every code address (`js/main.js?v=…`, also inside the scripts' imports and
+  the wiki page), taken from the newest file in `www`, `www/js` and `www/wiki`. After updating
+  those files, players get the new version on their next page load; nothing needs purging.
+
 - Passwords travel inside the encrypted wss:// connection. How the server stores them is
   unchanged.
 - Back to local only: empty both lists (`[]`) and stop the tunnel.

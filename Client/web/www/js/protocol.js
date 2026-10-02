@@ -108,6 +108,37 @@ export const LINE_CLICK_OFFSET = 20;
 export const LINE_CLICK_COUNT = 8;
 /** WindowButtons.cs, in MKW order. */
 export const WINDOW_BUTTONS = ["Combine", "Close", "Back", "Next", "OK"];
+export function encodeText(text) {
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+    for (const b of bytes)
+        binary += String.fromCharCode(b);
+    return btoa(binary);
+}
+export function decodeBytes(base64) {
+    if (base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64))
+        throw new Error("invalid base64");
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++)
+        bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+export function decodeText(base64) {
+    return new TextDecoder("utf-8", { fatal: true }).decode(decodeBytes(base64));
+}
+export function utf8Length(text) {
+    return new TextEncoder().encode(text).length;
+}
+function long(p) {
+    const text = p.string();
+    if (!/^-?\d+$/.test(text))
+        throw new Error(`expected an integer, got '${text}'`);
+    const value = Number(text);
+    if (!Number.isSafeInteger(value))
+        throw new Error(`integer out of range: ${text}`);
+    return value;
+}
 // Prefixes exactly as in AsperetaClient/Packets/*.cs. Coordinates and facings are 1 based on
 // the wire; the desktop client subtracts one while parsing and so do we.
 const PARSERS = {
@@ -277,6 +308,23 @@ const PARSERS = {
     },
     // Quest indicator above an NPC (server QuestIcon* settings); 0,0 clears it.
     CHI: (p) => ({ type: "characterIcon", loginId: p.int(), sheet: p.int(), graphic: p.int() }),
+    LMT: (p) => ({ type: "logType", windowId: p.int(), typeId: p.int(), group: decodeText(p.string()), label: decodeText(p.left() > 0 ? p.string() : "") }),
+    LMM: (p) => ({ type: "logMap", windowId: p.int(), mapId: p.int(), name: decodeText(p.left() > 0 ? p.string() : "") }),
+    LMD: (p) => ({ type: "logRange", windowId: p.int(), startMs: long(p), endMs: long(p) }),
+    LRB: (p) => ({ type: "logBegin", windowId: p.int(), requestId: p.int() }),
+    LRD: (p) => ({
+        type: "logChunk", windowId: p.int(), requestId: p.int(), ordinal: p.int(), index: p.int(), count: p.int(),
+        segment: p.left() > 0 ? p.remaining() : "",
+    }),
+    LRF: (p) => {
+        const windowId = p.int();
+        const requestId = p.int();
+        const hasMore = p.string() === "1";
+        const currentToken = p.string();
+        const nextToken = p.left() > 0 ? p.remaining() : "";
+        return { type: "logFinish", windowId, requestId, hasMore, currentToken, nextToken };
+    },
+    LRX: (p) => ({ type: "logError", windowId: p.int(), requestId: p.int(), message: decodeText(p.left() > 0 ? p.string() : "") }),
     BUF: (p) => {
         const slot = p.int() - 1;
         if (p.left() === 0)
@@ -354,6 +402,8 @@ export const ClientPackets = {
     killBuff: (slot) => `KBUF${slot + 1}`,
     /** Click on line `line` (0-based, current page) of an option list. */
     windowLineClick: (line, w) => `WBC${LINE_CLICK_OFFSET + line},${w.id},${w.npcId},${w.unknown1},${w.unknown2}`,
+    logSearchFresh: (windowId, requestId, q) => `LQS${windowId},${requestId},F,${q.startMs},${q.endMs},${encodeText(q.participant)},${q.mapId},${q.typeIds.join("|")},${encodeText(q.text)}`,
+    logSearchPage: (windowId, requestId, token) => `LQS${windowId},${requestId},P,${token}`,
     vendorBuy: (npcId, slot) => `VPI${npcId},${slot + 1}`,
     vendorSell: (npcId, slot, stack) => `VSI${npcId},${slot + 1},${stack}`,
     itemDetails: (itemId) => `GID${itemId}`,

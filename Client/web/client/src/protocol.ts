@@ -157,6 +157,13 @@ export type ServerPacket =
   | { type: "endWindow"; windowId: number }
   | { type: "windowOpeningLine"; windowId: number; text: string }
   | { type: "closeWindow"; windowId: number }
+  | { type: "logType"; windowId: number; typeId: number; group: string; label: string }
+  | { type: "logMap"; windowId: number; mapId: number; name: string }
+  | { type: "logRange"; windowId: number; startMs: number; endMs: number }
+  | { type: "logBegin"; windowId: number; requestId: number }
+  | { type: "logChunk"; windowId: number; requestId: number; ordinal: number; index: number; count: number; segment: string }
+  | { type: "logFinish"; windowId: number; requestId: number; hasMore: boolean; currentToken: string; nextToken: string }
+  | { type: "logError"; windowId: number; requestId: number; message: string }
   // Party and quest indicators
   | { type: "groupUpdate"; line: number; loginId: number; name: string; level: number; className: string }
   | { type: "characterIcon"; loginId: number; sheet: number; graphic: number };
@@ -221,6 +228,37 @@ export interface SpellInfo {
 }
 
 type Parser = (p: PacketParser) => ServerPacket;
+
+export function encodeText(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+export function decodeBytes(base64: string): Uint8Array {
+  if (base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) throw new Error("invalid base64");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+export function decodeText(base64: string): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(decodeBytes(base64));
+}
+
+export function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+function long(p: PacketParser): number {
+  const text = p.string();
+  if (!/^-?\d+$/.test(text)) throw new Error(`expected an integer, got '${text}'`);
+  const value = Number(text);
+  if (!Number.isSafeInteger(value)) throw new Error(`integer out of range: ${text}`);
+  return value;
+}
 
 // Prefixes exactly as in AsperetaClient/Packets/*.cs. Coordinates and facings are 1 based on
 // the wire; the desktop client subtracts one while parsing and so do we.
@@ -387,6 +425,23 @@ const PARSERS: Record<string, Parser> = {
   },
   // Quest indicator above an NPC (server QuestIcon* settings); 0,0 clears it.
   CHI: (p) => ({ type: "characterIcon", loginId: p.int(), sheet: p.int(), graphic: p.int() }),
+  LMT: (p) => ({ type: "logType", windowId: p.int(), typeId: p.int(), group: decodeText(p.string()), label: decodeText(p.left() > 0 ? p.string() : "") }),
+  LMM: (p) => ({ type: "logMap", windowId: p.int(), mapId: p.int(), name: decodeText(p.left() > 0 ? p.string() : "") }),
+  LMD: (p) => ({ type: "logRange", windowId: p.int(), startMs: long(p), endMs: long(p) }),
+  LRB: (p) => ({ type: "logBegin", windowId: p.int(), requestId: p.int() }),
+  LRD: (p) => ({
+    type: "logChunk", windowId: p.int(), requestId: p.int(), ordinal: p.int(), index: p.int(), count: p.int(),
+    segment: p.left() > 0 ? p.remaining() : "",
+  }),
+  LRF: (p) => {
+    const windowId = p.int();
+    const requestId = p.int();
+    const hasMore = p.string() === "1";
+    const currentToken = p.string();
+    const nextToken = p.left() > 0 ? p.remaining() : "";
+    return { type: "logFinish", windowId, requestId, hasMore, currentToken, nextToken };
+  },
+  LRX: (p) => ({ type: "logError", windowId: p.int(), requestId: p.int(), message: decodeText(p.left() > 0 ? p.string() : "") }),
   BUF: (p) => {
     const slot = p.int() - 1;
     if (p.left() === 0) return { type: "buffSlot", slot, buff: null };
@@ -463,12 +518,24 @@ export const ClientPackets = {
   killBuff: (slot: number) => `KBUF${slot + 1}`,
   /** Click on line `line` (0-based, current page) of an option list. */
   windowLineClick: (line: number, w: WindowInfo) => `WBC${LINE_CLICK_OFFSET + line},${w.id},${w.npcId},${w.unknown1},${w.unknown2}`,
+  logSearchFresh: (windowId: number, requestId: number, q: LogFreshQuery) =>
+    `LQS${windowId},${requestId},F,${q.startMs},${q.endMs},${encodeText(q.participant)},${q.mapId},${q.typeIds.join("|")},${encodeText(q.text)}`,
+  logSearchPage: (windowId: number, requestId: number, token: string) => `LQS${windowId},${requestId},P,${token}`,
   vendorBuy: (npcId: number, slot: number) => `VPI${npcId},${slot + 1}`,
   vendorSell: (npcId: number, slot: number, stack: number) => `VSI${npcId},${slot + 1},${stack}`,
   itemDetails: (itemId: number) => `GID${itemId}`,
   leftClick: (x: number, y: number) => `LC${x + 1},${y + 1}`,
   rightClick: (x: number, y: number) => `RC${x + 1},${y + 1}`,
 };
+
+export interface LogFreshQuery {
+  startMs: number;
+  endMs: number;
+  participant: string;
+  mapId: number;
+  typeIds: number[];
+  text: string;
+}
 
 /** ChatType from GUIElements/ChatListBox.cs. */
 export enum ChatType { Chat = 1, Guild, Group, Melee, Spells, Tell, Server, Client }

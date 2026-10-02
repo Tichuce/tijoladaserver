@@ -13,6 +13,7 @@
     "src/autohunt.ts",
     "src/skin.ts",
     "src/tooltip.ts",
+    "src/logviewer.ts",
     "test/**/*.ts"
   ]
 }

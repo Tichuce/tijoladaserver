@@ -29,7 +29,7 @@ namespace AsperetaWeb
             ".html", ".js", ".css", ".json", ".bin", ".map"
         };
 
-        private static readonly ConcurrentDictionary<string, (DateTime Stamp, byte[] Gzip)> gzipCache = new();
+        private static readonly ConcurrentDictionary<string, (DateTime Stamp, string Version, byte[] Gzip)> gzipCache = new();
 
         public static int Run(string root, int port, Uri gameServer)
         {
@@ -97,15 +97,16 @@ namespace AsperetaWeb
                 response.Headers["Cache-Control"] = isAsset ? "public, max-age=3600" : "no-cache";
 
                 byte[] body;
+                string version = CodeVersion.Applies(path, ext) ? CodeVersion.Current(root) : null;
                 string acceptEncoding = context.Request.Headers["Accept-Encoding"] ?? "";
                 if (Compressible.Contains(ext) && acceptEncoding.Contains("gzip", StringComparison.OrdinalIgnoreCase))
                 {
-                    body = GetGzip(full);
+                    body = GetGzip(full, ext, version);
                     response.Headers["Content-Encoding"] = "gzip";
                 }
                 else
                 {
-                    body = File.ReadAllBytes(full);
+                    body = version is null ? File.ReadAllBytes(full) : Rewritten(full, ext, version);
                 }
 
                 response.ContentLength64 = body.Length;
@@ -120,20 +121,26 @@ namespace AsperetaWeb
             }
         }
 
-        private static byte[] GetGzip(string file)
+        private static byte[] GetGzip(string file, string ext, string version)
         {
             var stamp = File.GetLastWriteTimeUtc(file);
-            if (gzipCache.TryGetValue(file, out var cached) && cached.Stamp == stamp)
+            if (gzipCache.TryGetValue(file, out var cached) && cached.Stamp == stamp && cached.Version == version)
                 return cached.Gzip;
 
-            byte[] raw = File.ReadAllBytes(file);
+            var result = Gzip(version is null ? File.ReadAllBytes(file) : Rewritten(file, ext, version));
+            gzipCache[file] = (stamp, version, result);
+            return result;
+        }
+
+        private static byte[] Rewritten(string file, string ext, string version)
+            => System.Text.Encoding.UTF8.GetBytes(CodeVersion.Rewrite(File.ReadAllText(file), ext, version));
+
+        private static byte[] Gzip(byte[] raw)
+        {
             using var ms = new MemoryStream();
             using (var gz = new GZipStream(ms, CompressionLevel.Optimal, leaveOpen: true))
                 gz.Write(raw, 0, raw.Length);
-
-            var result = ms.ToArray();
-            gzipCache[file] = (stamp, result);
-            return result;
+            return ms.ToArray();
         }
     }
 }

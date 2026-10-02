@@ -14,6 +14,7 @@ import { AutoHuntTracker } from "./autohunt.js";
 import { OneShot } from "./character.js";
 import { Connection } from "./connection.js";
 import { ChatType, ClientPackets, Direction, InventoryItem, LINE_CLICK_COUNT, ServerPacket, SpellInfo, StatusInfo, WindowFrame, WindowInfo, WindowLine, parsePacket } from "./protocol.js";
+import { LogFilters, LogPacket, LogViewerState } from "./logviewer.js";
 import { World } from "./world.js";
 
 export type SessionPhase = "connecting" | "loggingIn" | "loadingMap" | "inGame" | "disconnected";
@@ -48,6 +49,7 @@ export interface GameWindow extends WindowInfo {
   opening: string | null;
   /** Server windows appear once their lines are in (ENW, BaseWindow.EndWindow). */
   shown: boolean;
+  log: LogViewerState | null;
 }
 
 /** Where a dragged item came from / is dropped. */
@@ -347,7 +349,10 @@ export class Session {
 
       case "makeWindow":
         // A repeat MKW for the same id (paging) replaces the window's contents.
-        this.windows.set(p.window.id, { ...p.window, lines: [], opening: null, shown: false });
+        this.windows.set(p.window.id, {
+          ...p.window, lines: [], opening: null, shown: false,
+          log: p.window.frame === WindowFrame.LogViewer ? new LogViewerState(p.window.id) : null,
+        });
         this.events.stateChanged();
         break;
 
@@ -378,6 +383,16 @@ export class Session {
         this.events.stateChanged();
         break;
       }
+
+      case "logType":
+      case "logMap":
+      case "logRange":
+      case "logBegin":
+      case "logChunk":
+      case "logFinish":
+      case "logError":
+        if (this.windows.get(p.windowId)?.log?.handle(p as LogPacket)) this.events.stateChanged();
+        break;
 
       case "buffSlot":
         if (p.slot >= 0 && p.slot < 40) {
@@ -627,6 +642,25 @@ export class Session {
       w.shown = false;
       this.windows.delete(windowId);
     }
+    this.events.stateChanged();
+  }
+
+  logSearch(windowId: number, filters: LogFilters): string | null {
+    const log = this.windows.get(windowId)?.log;
+    if (!log || !this.world) return null;
+    const result = log.fresh(filters, Date.now());
+    if ("error" in result) return result.error;
+    this.connection.send(result.packet);
+    this.events.stateChanged();
+    return null;
+  }
+
+  logPage(windowId: number, forward: boolean): void {
+    const log = this.windows.get(windowId)?.log;
+    if (!log || !this.world) return;
+    const packet = forward ? log.next() : log.previous();
+    if (!packet) return;
+    this.connection.send(packet);
     this.events.stateChanged();
   }
 

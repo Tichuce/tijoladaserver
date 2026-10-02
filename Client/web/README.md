@@ -87,6 +87,21 @@ The desktop client keeps working at the same time on port 2006.
 - **Line icons** in the extended `WNF` format (`text|stack|item|sheet|graphic|*` or
   `...|r|g|b|a`), e.g. recipe results; Aspereta's item and text lines keep their format.
 
+**GM log viewer** (`/logs`, `MKW` frame 29, needs the `ViewLogs` privilege): the browser
+version of the server's log viewer window.
+- Metadata arrives as `LMT` (event types by group), `LMM` (maps) and `LMD` (default UTC range);
+  Search stays disabled until `LMD`.
+- Filters: UTC presets (last hour, previous 24 hours / 7 days / 30 days) or a custom UTC
+  range, participant (name or `#id`), map (list or `#id`), grouped event types, text. The
+  31-day limit (7 days with text) is checked before sending; the server checks everything again.
+- Search sends `LQS…,F,…`; Previous/Next send `LQS…,P,<token>` with the server's page tokens.
+- Results (`LRB`, chunked `LRD`, `LRF`) are staged and replace the table only on a complete,
+  matching `LRF`; `LRX` errors and malformed results leave the shown rows in place. Stale
+  request ids and other windows' packets are ignored.
+- Table of up to 50 rows; selecting one shows the details (summary, ISO UTC time, event,
+  entities with ids, map and coordinates, original text) with **Copy details** and quick
+  filters (participant, event, map) that fill the form without searching.
+
 **Phase 3, first part (classic look):** the game's own skin (`Game.ini` `Skin=`, e.g.
 Maisemore), from the files `convert-assets.bat` already writes to `www/assets/skins`.
 Positions, sizes and buttons come from the skin's `Window.ini`/`Button.ini`, read the way the
@@ -124,8 +139,8 @@ desktop client's `BaseWindow` reads them:
 - Sound: the server sends no sound events and the desktop client plays none, so there is
   nothing to follow without inventing when sounds play.
 - Trade and letter windows: the server never opens them (frames 24/25 are never sent).
-- The custom-item window (frame 28, needs Illutia custom tickets) and the GM log viewer
-  (frame 29, GM only) open as plain windows without their special controls.
+- The custom-item window (frame 28, needs Illutia custom tickets) opens as a plain window
+  without its special controls.
 
 Packets the browser doesn't handle are listed in `aspereta.session.unhandled` in the
 browser console.
@@ -182,7 +197,7 @@ sortable columns. Every entry has its own link (for example `#/items/290`).
 |---|---|
 | `client/src/*.ts` | TypeScript source (no framework, Canvas 2D). `skin.ts` reads the game's skin. |
 | `www/` | What the browser loads: `index.html`, `style.css`, compiled `js/`, converted `assets/`. |
-| `tools/AsperetaWeb/` | `convert` (asset pipeline), `serve` (local static server) and `wiki` (game data export), .NET 10. |
+| `tools/AsperetaWeb/` | `convert` (asset pipeline), `serve` (local web server; passes `/ws` game connections to the game server) and `wiki` (game data export), .NET 10. |
 | `www/wiki/` | The static game wiki: `index.html`, `wiki.js`, `wiki-model.js`, `wiki.css`, generated `data.js` and `assets-index.js`. |
 | `../../Goose/WebSocketTransport.cs` | The server side: handshake, frame decode/encode. |
 
@@ -210,7 +225,7 @@ editing `client/src`:
 ```
 cd client
 npx tsc -p .              # or: npm run build
-npm test                  # packet parser / map format / tint / wiki tests (Node 20+)
+npm test                  # packet parser / map format / tint / log viewer / wiki tests (Node 20+)
 ```
 
 ## Server settings
