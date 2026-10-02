@@ -1,4 +1,4 @@
-==== build 01/10/2026 22:31:15,12 
+==== build 02/10/2026  6:47:38,61 
   Determinando os projetos a serem restaurados...
   Todos os projetos est√£o atualizados para restaura√ß√£o.
   AsperetaWeb -> C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\tools\AsperetaWeb\bin\Release\net10.0\AsperetaWeb.dll
@@ -7,7 +7,7 @@ Compila√ß√£o com √™xito.
     0 Aviso(s)
     0 Erro(s)
 
-Tempo Decorrido 00:00:03.89
+Tempo Decorrido 00:00:04.12
 build exit 0 
 ==== export 
   item_templates: 950 rows
@@ -31,7 +31,8 @@ build exit 0
   item_surnames: 5 rows
 Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\wiki\data.js (477 KB)
 Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\wiki\assets-index.js (pictures from C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\assets)
-Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\aspereta-wiki.html (5075 KB, 462 sprite sheets inlined)
+Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\www\wiki\maps-data.js (43 maps, 119 KB)
+Wrote C:\Users\diego\Desktop\Asperetinha\tijoladaserver\Client\web\aspereta-wiki.html (5209 KB, 462 sprite sheets inlined)
 export exit 0 
 ==== node 
 INFORMAÄÂES: n∆o foi poss°vel localizar arquivos para o(s) padr∆o(‰es) especificado(s).

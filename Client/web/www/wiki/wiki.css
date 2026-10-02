@@ -199,3 +199,20 @@ canvas.ico.big { width: 48px; height: 48px; }
   .filters { position: static; }
   .table-wrap { max-height: none; }
 }
+
+/* Map images (drawn from the converted map files with the game's tiles). */
+.map-image { margin: 4px 0; }
+.map-image canvas { display: block; width: 100%; height: auto; max-width: 400px; background: #000; border: 1px solid var(--line); border-radius: 4px; }
+.map-image canvas:not(.ready) { aspect-ratio: 1; }
+.map-image .placeholder { margin: 4px 0; font-size: 11px; }
+.map-image .map-full {
+  padding: 4px 10px; background: transparent; color: var(--link); border: 1px solid var(--line);
+  border-radius: 4px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.map-image .map-full:hover { border-color: var(--link); }
+.map-overlay { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; background: rgba(5, 6, 9, 0.94); }
+.map-overlay-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.map-overlay-bar b { color: var(--accent); }
+.map-overlay-bar button { margin-left: auto; padding: 5px 14px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 4px; font: inherit; cursor: pointer; }
+.map-overlay-body { flex: 1; overflow: auto; padding: 16px; }
+.map-overlay-body canvas { display: block; image-rendering: pixelated; }

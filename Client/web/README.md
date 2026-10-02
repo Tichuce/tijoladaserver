@@ -132,9 +132,19 @@ browser console.
 
 ## Game wiki (`www/wiki`)
 
-A static, searchable wiki built from the server's own game data: items, creatures and NPCs,
-spells, quests, recipes, maps and item modifiers, all linked to each other (drops with their
-chances, vendor stock, spawn maps, quest givers, recipe ingredients, ...).
+A static, searchable wiki built from the server's own game data: items, creatures (monsters),
+NPCs (vendors, bankers, quest givers), spells, quests, recipes, maps and item modifiers, all
+linked to each other (drops with their chances, vendor stock, spawn maps, quest givers, recipe
+ingredients, ...).
+
+- **Spells** show their required level where the data has one: the level each class learns it
+  at (`classes_levelup_spells`) and the minimum level of each item that teaches it
+  (`learn_spell_id`, `min_level`). Spells with neither say so.
+- **Maps** show a picture of the map, drawn from the converted map file named by
+  `map_filename` (`www/assets/maps/<n>.bin`) with the game's own tiles, all four layers; "View
+  full size" opens it at 1:1. `build-wiki.bat` packs the converted maps into
+  `www/wiki/maps-data.js` so this works from disk and in `aspereta-wiki.html` too.
+- **Quests** show the NPC who gives the quest (from the NPCs' `quest_ids`).
 
 1. **Export the data:** double-click `build-wiki.bat`. It reads
    `..\..\Goose\bin\Debug\AsperetaGoose.db` by default (pass another database as the first

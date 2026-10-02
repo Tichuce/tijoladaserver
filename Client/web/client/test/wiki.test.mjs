@@ -141,16 +141,18 @@ test("wiki.js parses and the page loads its scripts in order", () => {
   new vm.Script(readFileSync(new URL("wiki.js", wikiDir), "utf8"), { filename: "wiki.js" });
   const html = readFileSync(new URL("index.html", wikiDir), "utf8");
   const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
-  same(scripts, ["data.js", "assets-index.js", "wiki-model.js", "wiki.js"]);
+  same(scripts, ["data.js", "assets-index.js", "maps-data.js", "wiki-model.js", "wiki.js"]);
   assert.ok(!/type="module"/.test(html), "classic scripts, so file:// works");
   // WikiExporter.WriteSingleFile replaces these exact tags when it inlines the page.
   for (const tag of ['<link rel="stylesheet" href="wiki.css">', '<script src="data.js"></script>',
-    '<script src="assets-index.js" onerror="void 0"></script>', '<script src="wiki-model.js"></script>', '<script src="wiki.js"></script>']) {
+    '<script src="assets-index.js" onerror="void 0"></script>', '<script src="maps-data.js" onerror="void 0"></script>',
+    '<script src="wiki-model.js"></script>', '<script src="wiki.js"></script>']) {
     assert.ok(html.includes(tag), tag);
   }
   const cs = readFileSync(exporter, "utf8");
   assert.ok(cs.includes('<link rel=\\"stylesheet\\" href=\\"wiki.css\\">'), "exporter inlines wiki.css");
-  assert.ok(cs.includes('<script src=\\"assets-index.js\\" onerror=\\"void 0\\"></script>'), "exporter inlines assets-index.js");
+  assert.ok(cs.includes('$"<script src=\\"{name}\\" onerror=\\"void 0\\"></script>"'), "exporter inlines the optional scripts");
+  assert.ok(cs.includes('"data.js", "assets-index.js", "maps-data.js", "wiki-model.js", "wiki.js"'), "exporter inlines every script, in page order");
 });
 
 test("equipped_items is read like the client's MKC parser", () => {
@@ -181,6 +183,50 @@ test("NPC pictures use the facing-down standing frame of each layer, monsters on
   same(state2.layers.map((l) => [l.frameId, l.tint]), [[610, [1, 2, 3, 99]]], "body has no state-2 frame here; chest does, tinted");
   assert.equal(W.npcLayers({ body_id: 0 }, assets), null);
   assert.equal(W.npcLayers({ body_id: 150 }, null), null);
+});
+
+test("creatures are the monsters (type 2); every other NPC type is an NPC", () => {
+  const W = loadModel();
+  const M = W.build({ tables: { npc_templates: table(["npc_id", "npc_name", "npc_type"], [[1, "Rat", 2], [2, "Shopkeeper", 10], [3, "Banker", 11], [4, "Trainer", 12], [5, "Odd", 7]]) } });
+  same(M.creatures.map((n) => n.npc_name), ["Rat"]);
+  same(M.otherNpcs.map((n) => n.npc_name), ["Shopkeeper", "Banker", "Trainer", "Odd"]);
+});
+
+test("spell level requirements come from class level-ups and teaching items only", () => {
+  const W = loadModel();
+  const M = W.build({ tables: {
+    classes: CLASSES,
+    spells: table(["spell_id", "spell_name"], [[1, "Heal"], [2, "Bolt"], [3, "Nothing"], [4, "Free scroll"]]),
+    classes_levelup_spells: table(["class_id", "level", "spell_id"], [[5, 4, 1], [2, 11, 1]]),
+    item_templates: table(["item_template_id", "item_name", "learn_spell_id", "min_level", "max_level"], [[10, "Scroll: Bolt", 2, 20, 0], [11, "Scroll: Free", 4, 0, 0]]),
+  } });
+  same(W.spellLevels(M, 1), [{ level: 4, source: "levelup", classId: 5 }, { level: 11, source: "levelup", classId: 2 }]);
+  same(W.spellLevels(M, 2), [{ level: 20, maxLevel: 0, source: "item", itemId: 10 }]);
+  assert.equal(W.spellMinLevel(M, 1), 4);
+  assert.equal(W.spellMinLevel(M, 2), 20);
+  same(W.spellLevels(M, 3), [], "no data, no requirement");
+  assert.equal(W.spellMinLevel(M, 3), null);
+  assert.equal(W.spellMinLevel(M, 4), null, "a scroll with min_level 0 has no level requirement");
+});
+
+test("map images: file number from map_filename, AMAP parsing, bottom-aligned tiles", () => {
+  const W = loadModel();
+  assert.equal(W.mapFileNumber("Map12.map"), 12);
+  assert.equal(W.mapFileNumber("map3.MAP"), 3);
+  assert.equal(W.mapFileNumber("Town.map"), null);
+  const buf = new ArrayBuffer(10 + 2 * 17);
+  const v = new DataView(buf);
+  [..."AMAP"].forEach((c, i) => v.setUint8(i, c.charCodeAt(0)));
+  v.setUint16(4, 1, true); v.setUint16(6, 2, true); v.setUint16(8, 1, true);
+  v.setUint8(10, 1); v.setInt32(11, 100, true); v.setInt32(15, 0, true); v.setInt32(19, 7, true); v.setInt32(23, 0, true);
+  v.setInt32(28, 200, true);
+  const map = W.parseMap(buf);
+  assert.equal(map.width, 2);
+  assert.equal(map.height, 1);
+  same(Array.from(map.layers), [100, 0, 7, 0, 200, 0, 0, 0]);
+  same(W.mapFrameOffset(32, 32), [0, 0]);
+  same(W.mapFrameOffset(64, 96), [-16, -64], "tall scenery rises above its tile, centred");
+  assert.throws(() => W.parseMap(new ArrayBuffer(12)));
 });
 
 test("generated data.js (when present) builds a consistent model", { skip: !existsSync(new URL("data.js", wikiDir)) }, () => {

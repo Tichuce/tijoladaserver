@@ -101,7 +101,9 @@
         } catch { /* no assets: no pictures */ }
       }
       this.assets = W.assetIndex(index);
+      this.loaded = true;
       if (this.assets) this.paint(document);
+      else for (const el of document.querySelectorAll("[data-map-status]")) el.textContent = MapImages.NO_ASSETS;
     },
 
     html(graphic, tint, size) {
@@ -152,6 +154,10 @@
 
     paint(rootEl) {
       if (!this.assets) return;
+      for (const canvas of rootEl.querySelectorAll("canvas[data-map]:not([data-done])")) {
+        canvas.dataset.done = "1";
+        MapImages.draw(canvas, Number(canvas.dataset.map), Number(canvas.dataset.scale) || 0.25);
+      }
       for (const canvas of rootEl.querySelectorAll("canvas.ico:not([data-done])")) {
         canvas.dataset.done = "1";
         const f = this.assets.frames[canvas.dataset.g];
@@ -212,6 +218,116 @@
     }
   }
 
+  // ---- Map images -----------------------------------------------------------------------
+  //
+  // Drawn from the converted maps (www/assets/maps/<n>.bin, the file named by map_filename)
+  // with the game's own tile frames, every layer, the way the client draws the ground and
+  // scenery (characters and items are not part of the map file). The maps come from
+  // maps-data.js (written by build-wiki.bat, gzip + base64) or, over http, from ../assets.
+
+  const MapImages = {
+    NO_ASSETS: "No map image: the converted game assets (www/assets) were not found. Run convert-assets.bat, then build-wiki.bat.",
+    cache: new Map(),
+
+    embedded(n) {
+      return !!(window.ASPERETA_MAPS && window.ASPERETA_MAPS[n]);
+    },
+
+    available(m) {
+      const n = W.mapFileNumber(m.map_filename);
+      return n !== null && this.embedded(n);
+    },
+
+    load(n) {
+      let entry = this.cache.get(n);
+      if (!entry) {
+        entry = (async () => {
+          let buffer = null;
+          if (this.embedded(n) && typeof DecompressionStream === "function") {
+            const bytes = Uint8Array.from(atob(window.ASPERETA_MAPS[n]), (c) => c.charCodeAt(0));
+            const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+            buffer = await new Response(stream).arrayBuffer();
+          } else if (!window.ASPERETA_MAPS && location.protocol !== "file:") {
+            // Without maps-data.js the converted maps can still be read over http.
+            const res = await fetch("../assets/maps/" + n + ".bin");
+            if (res.ok) buffer = await res.arrayBuffer();
+          }
+          return buffer ? W.parseMap(buffer) : null;
+        })().catch(() => null);
+        this.cache.set(n, entry);
+      }
+      return entry;
+    },
+
+    async draw(canvas, n, scale) {
+      const status = canvas.parentElement && canvas.parentElement.querySelector("[data-map-status]");
+      const map = await this.load(n);
+      if (!map) {
+        if (status) status.textContent = "No map image: www/assets/maps/" + n + ".bin was not found in the converted assets.";
+        canvas.hidden = true;
+        return;
+      }
+      const frames = Icons.assets.frames;
+      const files = new Set();
+      for (const id of map.layers) if (id > 0 && frames[id]) files.add(frames[id][0]);
+      const sheets = new Map(await Promise.all([...files].map(async (f) => [f, await Icons.sheet(f)])));
+      canvas.width = Math.max(1, Math.round(map.width * 32 * scale));
+      canvas.height = Math.max(1, Math.round(map.height * 32 * scale));
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = scale < 1;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      // Layer by layer, row by row, like the client's map renderer (bottom-aligned frames).
+      for (let l = 0; l < 4; l++) {
+        for (let y = 0; y < map.height; y++) {
+          for (let x = 0; x < map.width; x++) {
+            const id = map.layers[(y * map.width + x) * 4 + l];
+            const f = id > 0 ? frames[id] : null;
+            const img = f && sheets.get(f[0]);
+            if (!img) continue;
+            const [ox, oy] = W.mapFrameOffset(f[3], f[4]);
+            ctx.drawImage(img, f[1], f[2], f[3], f[4], x * 32 + ox, y * 32 + oy, f[3], f[4]);
+          }
+        }
+      }
+      canvas.title = map.width + " × " + map.height + " tiles";
+      canvas.classList.add("ready");
+      if (status) status.textContent = map.width + " × " + map.height + " tiles · from " + "Map" + n + ".map";
+    },
+
+    /** Full size view in an overlay (Esc or the button closes it). */
+    openFull(n, title) {
+      const overlay = document.createElement("div");
+      overlay.className = "map-overlay";
+      overlay.innerHTML = '<div class="map-overlay-bar"><b></b><span class="placeholder">Loading…</span><button type="button">Close</button></div><div class="map-overlay-body"><canvas data-scale="1"></canvas></div>';
+      overlay.querySelector("b").textContent = title;
+      const canvas = overlay.querySelector("canvas");
+      const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+      const onKey = (e) => { if (e.key === "Escape") close(); };
+      overlay.querySelector("button").addEventListener("click", close);
+      document.addEventListener("keydown", onKey);
+      document.body.appendChild(overlay);
+      this.draw(canvas, n, 1).then(() => {
+        overlay.querySelector(".placeholder").textContent = canvas.title || "";
+      });
+    },
+  };
+
+  function mapImageHtml(m) {
+    const n = W.mapFileNumber(m.map_filename);
+    if (n === null) return '<p class="placeholder">No map image: "' + esc(m.map_filename) + '" is not a MapN.map file name.</p>';
+    const status = Icons.loaded && !Icons.assets ? MapImages.NO_ASSETS : "Drawing the map…";
+    return '<div class="map-image"><canvas data-map="' + n + '" data-scale="0.125" width="1" height="1"></canvas>' +
+      '<p class="placeholder" data-map-status>' + esc(status) + "</p>" +
+      '<button type="button" class="map-full" data-map-full="' + n + '" data-title="' + esc(m.map_name || m.map_filename) + '">View full size</button></div>';
+  }
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("[data-map-full]");
+    if (b && Icons.assets) MapImages.openFull(Number(b.dataset.mapFull), b.dataset.title);
+  });
+
   const itemTint = (i) => [i.graphic_r, i.graphic_g, i.graphic_b, i.graphic_a];
   const itemIcon = (i, size) => Icons.html(i.graphic_tile, itemTint(i), size);
   const spellIcon = (s, size) => Icons.html(s.spellbook_graphic, null, size);
@@ -222,13 +338,16 @@
 
   const L = {
     item(id) { const i = M.item.get(Number(id)); return i ? itemIcon(i, "small") + '<a href="#/items/' + i.item_template_id + '">' + esc(i.item_name) + "</a>" : missing("Item", id); },
-    npc(id) { const n = M.npc.get(Number(id)); return n ? Icons.npc(n, "small") + '<a href="#/npcs/' + n.npc_id + '">' + esc(n.npc_name) + "</a>" : missing("NPC", id); },
+    npc(id) { const n = M.npc.get(Number(id)); return n ? Icons.npc(n, "small") + '<a href="#/' + npcSection(n) + "/" + n.npc_id + '">' + esc(n.npc_name) + "</a>" : missing("NPC", id); },
     spell(id) { const s = M.spell.get(Number(id)); return s ? spellIcon(s, "small") + '<a href="#/spells/' + s.spell_id + '">' + esc(s.spell_name) + "</a>" : missing("Spell", id); },
     map(id) { const m = M.map.get(Number(id)); return m ? '<a href="#/maps/' + m.map_id + '">' + esc(m.map_name || m.map_filename) + "</a>" : missing("Map", id); },
     quest(id) { const q = M.quest.get(Number(id)); return q ? '<a href="#/quests/' + q.id + '">' + esc(q.name) + "</a>" : missing("Quest", id); },
     combo(id) { const c = M.combo.get(Number(id)); return c ? '<a href="#/recipes/' + c.combination_id + '">' + esc(c.combination_name) + "</a>" : missing("Recipe", id); },
     cls(id) { const c = M.cls.get(Number(id)); return c ? esc(c.class_name) : "class id " + esc(id); },
   };
+
+  /** Creatures (monsters) and NPCs (everything else) are separate sections. */
+  const npcSection = (n) => (W.isCreature(n) ? "creatures" : "npcs");
 
   // ---- Spell effects (shown inside spells, items and quest rewards) ---------------------------
 
@@ -395,7 +514,7 @@
     const spawns = (M.spawnsByNpc.get(id) || []).slice().sort((a, b) => b.count - a.count);
     const total = spawns.reduce((s, x) => s + x.count, 0);
 
-    return head(Icons.npc(n, "big"), npcFullName(n), "NPC #" + id + " · " + W.label(W.NPC_TYPES, n.npc_type)) +
+    return head(Icons.npc(n, "big"), npcFullName(n), (W.isCreature(n) ? "Creature #" : "NPC #") + id + " · " + W.label(W.NPC_TYPES, n.npc_type)) +
       tags([
         W.isOne(n.stationary) ? ["Stationary", "warn"] : ["Moves", "yes"],
         W.notZero(n.stunnable) ? ["Stunnable", "yes"] : ["Not stunnable", "no"],
@@ -426,6 +545,7 @@
     const quests = (M.questsTeaching.get(id) || []).map(L.quest);
     return head(spellIcon(s, "big"), s.spell_name, "Spell #" + id + " · " + W.label(W.SPELL_TARGETS, s.spell_target)) +
       desc(s.spell_description) +
+      section("Required level", spellLevelText(s)) +
       section("Casting", kv([
         ["Target", esc(W.label(W.SPELL_TARGETS, s.spell_target))],
         ["Classes", esc(classNames(s.class_restrictions))],
@@ -437,6 +557,23 @@
       section("Taught by item", list(items)) +
       section("Quest reward", list(quests)) +
       rawTable(s);
+  }
+
+  /** Where the spell's level requirement comes from: class level-ups and teaching items. */
+  function spellLevelText(s) {
+    const levels = W.spellLevels(M, s.spell_id);
+    if (!levels.length) return '<p class="placeholder">No level requirement in the data: the spell is not learned at a level up and no item teaches it.</p>';
+    return list(levels.map((r) => r.source === "levelup"
+      ? "<b>Level " + num(r.level) + "</b>" + '<span class="meta">learned at level up · ' + esc(L.cls(r.classId)) + "</span>"
+      : (r.level > 0 ? "<b>Level " + num(r.level) + (r.maxLevel ? "–" + num(r.maxLevel) : "") + "</b>" : "<b>Any level</b>") +
+        '<span class="meta">to use ' + L.item(r.itemId) + "</span>"));
+  }
+
+  function spellLevelSummary(s) {
+    const levels = W.spellLevels(M, s.spell_id);
+    if (!levels.length) return "";
+    const min = W.spellMinLevel(M, s.spell_id);
+    return min === null ? "Any" : num(min) + (levels.some((r) => r.level !== min) ? "+" : "");
   }
 
   function requirementText(r) {
@@ -480,7 +617,8 @@
     const reqs = (M.reqsByQuest.get(q.id) || []).map((r) => requirementText(r) + '<span class="meta">' + (W.notZero(r.keep_requirement) ? "kept" : "taken on completion") + "</span>");
     const rewards = (M.rewardsByQuest.get(q.id) || []).map(rewardText);
     const prereq = W.idList(q.prerequisite_quests).map(L.quest);
-    return head("", q.name, "Quest #" + q.id) +
+    const giver = (M.npcsByQuest.get(q.id) || []).map((id) => M.npc.get(id)).find(Boolean);
+    return head(giver ? Icons.npc(giver, "big") : "", q.name, "Quest #" + q.id + (giver ? " · given by " + giver.npc_name : "")) +
       tags([
         W.notZero(q.repeatable) ? ["Repeatable", "yes"] : ["One time", "warn"],
         W.notZero(q.show_progress) && ["Shows progress"],
@@ -517,7 +655,9 @@
 
   function mapDetail(m) {
     const spawns = (M.spawnsByMap.get(m.map_id) || []).slice().sort((a, b) => (M.npc.get(a.npc_id)?.npc_level ?? 0) - (M.npc.get(b.npc_id)?.npc_level ?? 0));
-    const total = spawns.reduce((s, x) => s + x.count, 0);
+    const isMonster = (s) => { const n = M.npc.get(s.npc_id); return n ? W.isCreature(n) : true; };
+    const creatures = spawns.filter(isMonster), others = spawns.filter((s) => !isMonster(s));
+    const spawnLine = (s) => L.npc(s.npc_id) + npcLevel(s.npc_id) + '<span class="meta">×' + num(s.count) + "</span>";
     const flag = (col, name) => (W.notZero(m[col]) ? [name, "yes"] : ["No " + name.toLowerCase(), "no"]);
     return head("", m.map_name || m.map_filename, "Map #" + m.map_id + " · " + m.map_filename) +
       tags([
@@ -525,13 +665,15 @@
         flag("chat_enabled", "Chat"), flag("shout_enabled", "Shout"), flag("auction_enabled", "Auction"),
         flag("spells_enabled", "Spells"), flag("items_enabled", "Items"), flag("bind_enabled", "Bind"), flag("pets_enabled", "Pets"),
       ]) +
+      section("Map", mapImageHtml(m)) +
       section("Entry limits", kv([
         range(m.min_level, m.max_level) && ["Level", range(m.min_level, m.max_level)],
         range(m.min_experience, m.max_experience) && ["Experience", range(m.min_experience, m.max_experience)],
         m.script_path && ["Script", "<code>" + esc(m.script_path) + "</code>"],
       ].filter(Boolean))) +
       section("Required items", list((M.requiredByMap.get(m.map_id) || []).map(L.item))) +
-      section("Creatures & NPCs" + (total ? " (" + num(total) + " spawns)" : ""), list(spawns.map((s) => L.npc(s.npc_id) + npcLevel(s.npc_id) + '<span class="meta">×' + num(s.count) + "</span>"))) +
+      section("Creatures" + (creatures.length ? " (" + num(creatures.reduce((t, x) => t + x.count, 0)) + " spawns)" : ""), list(creatures.map(spawnLine))) +
+      section("NPCs" + (others.length ? " (" + num(others.reduce((t, x) => t + x.count, 0)) + ")" : ""), list(others.map(spawnLine))) +
       rawTable(m);
   }
 
@@ -601,14 +743,13 @@
       ],
     },
     {
-      id: "npcs", title: "Creatures & NPCs", rows: M.npcs, key: "npc_id", name: (n) => n.npc_name, detail: npcDetail,
+      id: "creatures", title: "Creatures", rows: M.creatures, key: "npc_id", name: (n) => n.npc_name, detail: npcDetail,
       text: (n) => npcFullName(n),
       icon: (n) => Icons.npc(n, "small"),
       sort: "lvl",
       columns: [
         { id: "pic", label: "", html: (n) => Icons.npc(n), cls: "ico-cell", nosort: true },
         { id: "name", label: "Name", get: (n) => n.npc_name, html: (n) => esc(n.npc_name) + (n.npc_title || n.npc_surname ? ' <span class="placeholder">' + esc([n.npc_title, n.npc_surname].filter(Boolean).join(" · ")) + "</span>" : "") },
-        { id: "type", label: "Type", get: (n) => W.label(W.NPC_TYPES, n.npc_type) },
         { id: "lvl", label: "Level", get: (n) => n.npc_level, num: true },
         { id: "hp", label: "HP", get: (n) => n.npc_hp, num: true },
         { id: "dmg", label: "Damage", get: (n) => n.weapon_damage, num: true },
@@ -619,7 +760,6 @@
         { id: "spawns", label: "Spawns", get: (n) => (M.spawnsByNpc.get(n.npc_id) || []).reduce((s, x) => s + x.count, 0), num: true },
       ],
       filters: [
-        { id: "type", label: "Type", type: "select", options: () => presentOptions(M.npcs, "npc_type", W.NPC_TYPES), test: (n, v) => String(n.npc_type) === v },
         { id: "lvl", label: "Level", type: "range", get: (n) => n.npc_level },
         {
           id: "aggro", label: "Aggro", type: "select", options: () => [["yes", "Has an aggro range"], ["no", "No aggro range (0)"]],
@@ -627,10 +767,36 @@
         },
         {
           id: "map", label: "Spawns on map", type: "select",
-          options: () => M.maps.filter((m) => M.spawnsByMap.has(m.map_id)).map((m) => [String(m.map_id), m.map_name || m.map_filename]).sort((a, b) => a[1].localeCompare(b[1])),
+          options: () => M.maps.filter((m) => (M.spawnsByMap.get(m.map_id) || []).some((s) => M.creatures.includes(M.npc.get(s.npc_id)))).map((m) => [String(m.map_id), m.map_name || m.map_filename]).sort((a, b) => a[1].localeCompare(b[1])),
           test: (n, v) => (M.spawnsByNpc.get(n.npc_id) || []).some((s) => String(s.map_id) === v),
         },
         { id: "drops", label: "Has drops", type: "check", test: (n) => M.dropsByNpc.has(n.npc_id) },
+        { id: "spawned", label: "Placed on a map", type: "check", test: (n) => M.spawnsByNpc.has(n.npc_id) },
+      ],
+    },
+    {
+      id: "npcs", title: "NPCs", rows: M.otherNpcs, key: "npc_id", name: (n) => n.npc_name, detail: npcDetail,
+      text: (n) => npcFullName(n),
+      icon: (n) => Icons.npc(n, "small"),
+      sort: "name",
+      columns: [
+        { id: "pic", label: "", html: (n) => Icons.npc(n), cls: "ico-cell", nosort: true },
+        { id: "name", label: "Name", get: (n) => n.npc_name, html: (n) => esc(n.npc_name) + (n.npc_title || n.npc_surname ? ' <span class="placeholder">' + esc([n.npc_title, n.npc_surname].filter(Boolean).join(" · ")) + "</span>" : "") },
+        { id: "type", label: "Type", get: (n) => W.label(W.NPC_TYPES, n.npc_type) },
+        { id: "lvl", label: "Level", get: (n) => n.npc_level, num: true },
+        { id: "sells", label: "Sells", get: (n) => (M.stockByNpc.get(n.npc_id) || []).length, html: (n) => (M.stockByNpc.has(n.npc_id) ? num(M.stockByNpc.get(n.npc_id).length) : ""), num: true },
+        { id: "quests", label: "Quests", get: (n) => W.idList(n.quest_ids).length, html: (n) => (W.idList(n.quest_ids).length ? num(W.idList(n.quest_ids).length) : ""), num: true },
+        { id: "spawns", label: "Spawns", get: (n) => (M.spawnsByNpc.get(n.npc_id) || []).reduce((s, x) => s + x.count, 0), num: true },
+      ],
+      filters: [
+        { id: "type", label: "Type", type: "select", options: () => presentOptions(M.otherNpcs, "npc_type", W.NPC_TYPES), test: (n, v) => String(n.npc_type) === v },
+        {
+          id: "map", label: "Spawns on map", type: "select",
+          options: () => M.maps.filter((m) => (M.spawnsByMap.get(m.map_id) || []).some((s) => M.otherNpcs.includes(M.npc.get(s.npc_id)))).map((m) => [String(m.map_id), m.map_name || m.map_filename]).sort((a, b) => a[1].localeCompare(b[1])),
+          test: (n, v) => (M.spawnsByNpc.get(n.npc_id) || []).some((s) => String(s.map_id) === v),
+        },
+        { id: "sells", label: "Sells items", type: "check", test: (n) => M.stockByNpc.has(n.npc_id) },
+        { id: "quests", label: "Gives quests", type: "check", test: (n) => W.idList(n.quest_ids).length > 0 },
         { id: "spawned", label: "Placed on a map", type: "check", test: (n) => M.spawnsByNpc.has(n.npc_id) },
       ],
     },
@@ -643,6 +809,7 @@
         { id: "icon", label: "", html: (s) => spellIcon(s), cls: "ico-cell", nosort: true },
         { id: "name", label: "Name", get: (s) => s.spell_name },
         { id: "cls", label: "Classes", get: (s) => classNames(s.class_restrictions), cls: "wrap" },
+        { id: "lvl", label: "Level", get: (s) => W.spellMinLevel(M, s.spell_id) ?? -1, html: spellLevelSummary, num: true },
         { id: "target", label: "Target", get: (s) => W.label(W.SPELL_TARGETS, s.spell_target) },
         { id: "mp", label: "MP cost", get: (s) => s.mp_static_cost, num: true },
         { id: "aether", label: "Aether (ms)", get: (s) => s.spell_aether, num: true },
@@ -650,6 +817,7 @@
       ],
       filters: [
         { id: "cls", label: "Class", type: "select", options: classOptions, test: (s, v) => canUse(s.class_restrictions, v) },
+        { id: "lvl", label: "Required level", type: "range", get: (s) => W.spellMinLevel(M, s.spell_id) ?? 0 },
         { id: "target", label: "Target", type: "select", options: () => presentOptions(M.spells, "spell_target", W.SPELL_TARGETS), test: (s, v) => String(s.spell_target) === v },
         {
           id: "eff", label: "Effect type", type: "select",
@@ -662,6 +830,7 @@
       id: "quests", title: "Quests", rows: M.quests, key: "id", name: (q) => q.name, detail: questDetail,
       text: (q) => q.name + " " + q.description, sort: "id",
       columns: [
+        { id: "pic", label: "", html: (q) => { const n = (M.npcsByQuest.get(q.id) || []).map((id) => M.npc.get(id)).find(Boolean); return n ? Icons.npc(n) : ""; }, cls: "ico-cell", nosort: true },
         { id: "id", label: "#", get: (q) => q.id, num: true },
         { id: "name", label: "Name", get: (q) => q.name },
         { id: "lvl", label: "Level", get: (q) => q.min_level, html: (q) => range(q.min_level, q.max_level), num: true },
@@ -692,12 +861,13 @@
         { id: "name", label: "Name", get: (m) => m.map_name || m.map_filename },
         { id: "lvl", label: "Level", get: (m) => m.min_level, html: (m) => range(m.min_level, m.max_level), num: true },
         { id: "pvp", label: "PvP", get: (m) => (W.notZero(m.pvp_enabled) ? "Yes" : "") },
-        { id: "kinds", label: "Creature types", get: (m) => (M.spawnsByMap.get(m.map_id) || []).length, num: true },
+        { id: "kinds", label: "Creature types", get: (m) => (M.spawnsByMap.get(m.map_id) || []).filter((s) => { const n = M.npc.get(s.npc_id); return n && W.isCreature(n); }).length, num: true },
         { id: "spawns", label: "Spawns", get: (m) => (M.spawnsByMap.get(m.map_id) || []).reduce((s, x) => s + x.count, 0), num: true },
       ],
       filters: [
         { id: "pvp", label: "PvP enabled", type: "check", test: (m) => W.notZero(m.pvp_enabled) },
-        { id: "npcs", label: "Has creatures/NPCs", type: "check", test: (m) => M.spawnsByMap.has(m.map_id) },
+        { id: "npcs", label: "Has creatures or NPCs", type: "check", test: (m) => M.spawnsByMap.has(m.map_id) },
+        ...(window.ASPERETA_MAPS ? [{ id: "img", label: "Has a map image", type: "check", test: (m) => MapImages.available(m) }] : []),
       ],
     },
     {
@@ -858,6 +1028,11 @@
   let shown = null;
   function route() {
     const { sec, id } = parseHash();
+    // Links from before the split (#/npcs/<id>) still find monsters, now under Creatures.
+    if (sec.id === "npcs" && id !== null && M.npc.has(Number(id)) && W.isCreature(M.npc.get(Number(id)))) {
+      location.replace("#/creatures/" + id);
+      return;
+    }
     current = sec;
     if (shown !== sec) {
       shown = sec;

@@ -142,6 +142,9 @@
     const surnames = t("item_surnames");
 
     const m = {
+      // Creatures are the monsters (NPCTemplate.Types.Monster); everything else is an NPC.
+      creatures: npcs.filter(isCreature),
+      otherNpcs: npcs.filter((n) => !isCreature(n)),
       meta: { generated: data.generated, source: data.source, tables: Object.keys(data.tables || {}) },
       classes, items, npcs, spells, effects, maps, quests, combos,
       modifiers: titles.map((r) => Object.assign({ kind: "Title", key: "t" + r.id }, r))
@@ -224,6 +227,54 @@
     }
 
     return m;
+  }
+
+  /** NPCTemplate.Types.Monster (2): the Creatures section; any other type is an NPC. */
+  function isCreature(npc) { return Number(npc.npc_type) === 2; }
+
+  /**
+   * Level requirements that stand between a player and a spell, from the data only:
+   * the level a class learns it at (classes_levelup_spells) and the minimum level of each
+   * item that teaches it (item_templates.learn_spell_id; 0 means the item has none).
+   * Spells themselves have no level column, so a spell with neither has no known requirement.
+   */
+  function spellLevels(m, spellId) {
+    const out = [];
+    for (const l of m.levelSpellsBySpell.get(spellId) || []) out.push({ level: Number(l.level), source: "levelup", classId: l.class_id });
+    for (const i of m.itemsTeaching.get(spellId) || []) out.push({ level: Number(i.min_level) || 0, maxLevel: Number(i.max_level) || 0, source: "item", itemId: i.item_template_id });
+    return out.sort((a, b) => a.level - b.level);
+  }
+
+  /** Lowest level at which the data lets someone get the spell, or null when it has no level. */
+  function spellMinLevel(m, spellId) {
+    const levels = spellLevels(m, spellId).map((r) => r.level).filter((l) => l > 0);
+    return levels.length ? Math.min(...levels) : null;
+  }
+
+  /** maps.map_filename "Map12.map" -> 12, the converted assets/maps/12.bin (AsperetaMapLoader). */
+  function mapFileNumber(filename) {
+    const match = /^Map(\d+)\.map$/i.exec(String(filename || "").trim());
+    return match ? Number(match[1]) : null;
+  }
+
+  /** The converter's "AMAP" v1 map: u16 width, u16 height, then per tile u8 blocked + 4 i32 frames. */
+  function parseMap(buffer) {
+    const view = new DataView(buffer);
+    const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+    if (magic !== "AMAP" || view.getUint16(4, true) !== 1) throw new Error("not an AMAP v1 map");
+    const width = view.getUint16(6, true), height = view.getUint16(8, true);
+    const layers = new Int32Array(width * height * 4);
+    let offset = 10;
+    for (let i = 0; i < width * height; i++) {
+      offset += 1; // blocked flag
+      for (let l = 0; l < 4; l++, offset += 4) layers[i * 4 + l] = view.getInt32(offset, true);
+    }
+    return { width, height, layers };
+  }
+
+  /** Map tile graphics are bottom aligned on their tile (assets.ts frameOffset "map"). */
+  function mapFrameOffset(w, h) {
+    return [16 - Math.trunc(w / 2), 32 - h];
   }
 
   /** Groups repeated ids into [id, count] pairs, keeping first-seen order. */
@@ -334,6 +385,7 @@
 
   root.AsperetaWikiModel = {
     assetIndex, parseEquipped, characterOffset, npcLayers,
+    isCreature, spellLevels, spellMinLevel, mapFileNumber, parseMap, mapFrameOffset,
     USE_TYPES, ITEM_SLOTS, ITEM_TYPES, NPC_TYPES, NPC_BEHAVIOURS, SPELL_TARGETS, EFFECT_TYPES,
     EFFECT_TARGET_TYPES, EFFECT_DISPLAYS, EFFECTED_BITS, ENERGY_BITS, REQUIREMENT_TYPES, REWARD_TYPES, STATS,
     label, bits, notZero, isOne, idList, gameText, classesAllowed, dropPercent, countIds, rowsOf, build,
