@@ -79,6 +79,10 @@ ingress:
 
 ## Starting it
 
+**One click:** `Start Aspereta Online.bat` on the desktop starts whatever is not running yet
+(the game server and `run-web.bat`, each in its own window) and checks that the cloudflared
+tunnel is running. It is safe to run again at any time. Step by step:
+
 1. Once: `convert-assets.bat` and `build-wiki.bat` (as for the local setup).
 2. Start the game server (`Start Aspereta Server.bat`).
 3. Start the web server: `Client\web\run-web.bat` (leave it open).
