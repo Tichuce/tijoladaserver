@@ -227,5 +227,100 @@ public class WebSocketTransportTests
         var settings = new GooseSettings();
         Assert.Equal("127.0.0.1", settings.WebSocketIP);
         Assert.Equal(2007, settings.WebSocketPort);
+        Assert.Empty(settings.WebSocketAllowedOrigins);
+        Assert.Empty(settings.WebSocketTrustedProxies);
+    }
+
+    private static byte[] HandshakeWith(params string[] headers) => Encoding.ASCII.GetBytes(
+        "GET /ws HTTP/1.1\r\nHost: play.example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+        string.Concat(headers.Select(h => h + "\r\n")) +
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n");
+
+    [Theory]
+    [InlineData("Origin: https://play.example.com")]
+    [InlineData("Origin: HTTPS://Play.Example.com/")]
+    public void AllowedOriginCompletesTheHandshake(string origin)
+    {
+        var c = new WebSocketConnection(new[] { "https://play.example.com" });
+        var result = Feed(c, HandshakeWith(origin));
+        Assert.True(result.HandshakeCompleted);
+        Assert.True(c.Open);
+    }
+
+    [Theory]
+    [InlineData("Origin: https://evil.example.net")]
+    [InlineData("Origin: http://play.example.com")]
+    [InlineData("Origin: https://play.example.com.evil.net")]
+    [InlineData("X-Nothing: 1")]
+    public void OtherOriginsAreRefusedWith403(string header)
+    {
+        var c = new WebSocketConnection(new[] { "https://play.example.com" });
+        var result = Feed(c, HandshakeWith(header));
+        Assert.True(result.Closed);
+        Assert.False(result.HandshakeCompleted);
+        Assert.False(c.Open);
+        Assert.StartsWith("HTTP/1.1 403", Encoding.ASCII.GetString(result.Response!));
+    }
+
+    [Fact]
+    public void NoOriginListAcceptsAnyOriginLikeTheLocalPrototype()
+    {
+        var c = new WebSocketConnection(Array.Empty<string>());
+        Assert.True(Feed(c, HandshakeWith("Origin: http://localhost:8080")).HandshakeCompleted);
+    }
+
+    [Theory]
+    [InlineData("X-Forwarded-For: 203.0.113.5", "127.0.0.1", "203.0.113.5")]
+    [InlineData("X-Forwarded-For: 10.0.0.1, 203.0.113.5", "127.0.0.1", "203.0.113.5")]
+    [InlineData("X-Real-IP: 198.51.100.7", "127.0.0.1", "198.51.100.7")]
+    [InlineData("X-Forwarded-For: 203.0.113.5", "::ffff:127.0.0.1", "203.0.113.5")]
+    [InlineData("X-Forwarded-For: not-an-ip", "127.0.0.1", "127.0.0.1")]
+    [InlineData("X-Forwarded-For: 203.0.113.5", "192.0.2.9", "192.0.2.9")]
+    [InlineData("X-Nothing: 1", "127.0.0.1", "127.0.0.1")]
+    public void ClientAddressTrustsForwardedHeadersOnlyFromTrustedProxies(string header, string socketIp, string expected)
+    {
+        var c = new WebSocketConnection();
+        Feed(c, HandshakeWith(header));
+        Assert.Equal(expected, c.ClientAddress(socketIp, new[] { "127.0.0.1" }));
+    }
+
+    [Fact]
+    public void ClientAddressIgnoresForwardedHeadersWhenNoProxyIsTrusted()
+    {
+        var c = new WebSocketConnection();
+        Feed(c, HandshakeWith("X-Forwarded-For: 203.0.113.5"));
+        Assert.Equal("127.0.0.1", c.ClientAddress("127.0.0.1", Array.Empty<string>()));
+    }
+
+    private static (Socket client, Socket accepted) LoopbackPair()
+    {
+        var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        listener.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0));
+        listener.Listen(4);
+        var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        client.Connect((System.Net.IPEndPoint)listener.LocalEndPoint!);
+        var accepted = listener.Accept();
+        listener.Close();
+        return (client, accepted);
+    }
+
+    [Fact]
+    public void RekeyMovesThePerIpCountFromTheProxyToThePlayer()
+    {
+        var server = new GameServer(new GooseSettings { MaxConnectionsPerIP = 1 });
+        var (c1, a1) = LoopbackPair();
+        var (c2, a2) = LoopbackPair();
+        using (c1) using (a1) using (c2) using (a2)
+        {
+            Assert.True(server.TryRegisterConnection(a1));
+            Assert.Equal("127.0.0.1", server.ConnectionIP(a1));
+
+            Assert.True(server.RekeyConnection(a1, "203.0.113.5"));
+            Assert.Equal("203.0.113.5", server.ConnectionIP(a1));
+            Assert.True(server.TryRegisterConnection(a2));
+
+            Assert.False(server.RekeyConnection(a2, "203.0.113.5"));
+            Assert.Equal("127.0.0.1", server.ConnectionIP(a2));
+        }
     }
 }

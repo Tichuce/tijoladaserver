@@ -20,7 +20,8 @@ namespace AsperetaWeb
                         return AssetConverter.Run(Option("--game", "."), Option("--out", "assets"));
 
                     case "serve":
-                        return StaticServer.Run(Option("--root", "www"), int.Parse(Option("--port", "8080")));
+                        return StaticServer.Run(Option("--root", "www"), int.Parse(Option("--port", "8080")),
+                            new Uri(Option("--game-ws", "ws://127.0.0.1:2007/")));
 
                     case "wiki":
                         return WikiExporter.Run(Option("--db", "AsperetaGoose.db"), Option("--out", Path.Combine("www", "wiki", "data.js")),
@@ -40,7 +41,7 @@ namespace AsperetaWeb
         private static int Usage()
         {
             Console.WriteLine("AsperetaWeb convert --game <Aspereta folder> --out <www/assets>");
-            Console.WriteLine("AsperetaWeb serve   --root <www> [--port 8080]");
+            Console.WriteLine("AsperetaWeb serve   --root <www> [--port 8080] [--game-ws ws://127.0.0.1:2007/]");
             Console.WriteLine("AsperetaWeb wiki    --db <AsperetaGoose.db> --out <www/wiki/data.js> [--assets <www/assets>] [--single <aspereta-wiki.html>]");
             return 2;
         }

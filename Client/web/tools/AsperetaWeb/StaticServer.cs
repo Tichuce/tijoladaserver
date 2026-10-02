@@ -7,8 +7,8 @@ namespace AsperetaWeb
     /**
      * Serves the browser client (www/) on http://localhost:{port}/ for local testing.
      *
-     * Only static files: the game itself is reached by the browser over WebSocket directly
-     * on the game server. Text and binary data files are gzip-compressed once and cached.
+     * Static files, plus WebSocket connections on /ws passed through to the game server's
+     * WebSocket listener. Text and binary data files are gzip-compressed once and cached.
      */
     public static class StaticServer
     {
@@ -31,7 +31,7 @@ namespace AsperetaWeb
 
         private static readonly ConcurrentDictionary<string, (DateTime Stamp, byte[] Gzip)> gzipCache = new();
 
-        public static int Run(string root, int port)
+        public static int Run(string root, int port, Uri gameServer)
         {
             root = Path.GetFullPath(root);
             if (!File.Exists(Path.Combine(root, "index.html")))
@@ -47,6 +47,7 @@ namespace AsperetaWeb
 
             Console.WriteLine($"Serving {root}");
             Console.WriteLine($"Open http://localhost:{port}/ in your browser. Ctrl+C to stop.");
+            Console.WriteLine($"Game connections on {WebSocketForwarder.GamePath} go to {gameServer}");
 
             if (!Directory.Exists(Path.Combine(root, "assets")))
                 Console.WriteLine("WARNING: www/assets is missing. Run convert-assets.bat first.");
@@ -63,7 +64,10 @@ namespace AsperetaWeb
                     break;
                 }
 
-                ThreadPool.QueueUserWorkItem(_ => Handle(context, root));
+                if (WebSocketForwarder.IsGameConnection(context.Request))
+                    _ = WebSocketForwarder.ForwardAsync(context, gameServer);
+                else
+                    ThreadPool.QueueUserWorkItem(_ => Handle(context, root));
             }
 
             return 0;

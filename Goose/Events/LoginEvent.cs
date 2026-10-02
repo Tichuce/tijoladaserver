@@ -44,8 +44,12 @@ namespace Goose.Events
             string packet = (string)(((Object[])this.Data)[1]);
             Socket sock = (Socket)(((Object[])this.Data)[0]);
 
-            string IP = sock.RemoteEndPoint!.ToString()!;
-            IP = IP.Substring(0, IP.IndexOf(":"));
+            string? IP = world.GameServer?.ConnectionIP(sock);
+            if (IP is null)
+            {
+                IP = sock.RemoteEndPoint!.ToString()!;
+                IP = IP.Substring(0, IP.IndexOf(":"));
+            }
 
             string name;
             string password;

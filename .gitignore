@@ -62,4 +62,7 @@ Client/run/
 Client/web/www/assets/
 Client/web/client/node_modules/
 Client/web/client/.test-build/
-Client/web/claude-check.log
+Client/web/claude-*.log
+Client/web/claude-*.bat
+Client/web/claude-*.ps1
+Client/web/aspereta-wiki.html

@@ -29,6 +29,8 @@
     "GameServerIP": "0.0.0.0",
     "WebSocketIP": "127.0.0.1",
     "WebSocketPort": 2007,
+    "WebSocketAllowedOrigins": [ "https://play.tijolada.com", "http://localhost:8080" ],
+    "WebSocketTrustedProxies": [ "127.0.0.1", "::1" ],
     "BaseHaste": 0,
     "BaseSpellDamage": 0,
     "BaseSpellCrit": 0,

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,9 +24,9 @@ namespace Goose
     {
         private static readonly ConcurrentDictionary<Socket, WebSocketConnection> connections = new();
 
-        internal static WebSocketConnection Register(Socket sock)
+        internal static WebSocketConnection Register(Socket sock, IReadOnlyCollection<string>? allowedOrigins = null)
         {
-            var connection = new WebSocketConnection();
+            var connection = new WebSocketConnection(allowedOrigins);
             connections[sock] = connection;
             return connection;
         }
@@ -81,9 +82,19 @@ namespace Goose
         private readonly List<byte> pending = new();
         private readonly List<byte> message = new();
 
+        private readonly IReadOnlyCollection<string> allowedOrigins;
+
+        public WebSocketConnection(IReadOnlyCollection<string>? allowedOrigins = null)
+        {
+            this.allowedOrigins = allowedOrigins ?? Array.Empty<string>();
+        }
+
         public bool Open { get; private set; }
 
         public string? Origin { get; private set; }
+
+        public string? ForwardedFor { get; private set; }
+        public string? RealIP { get; private set; }
 
         public sealed class FeedResult
         {
@@ -145,6 +156,10 @@ namespace Goose
                     upgrade = value.Equals("websocket", StringComparison.OrdinalIgnoreCase);
                 else if (name.Equals("Origin", StringComparison.OrdinalIgnoreCase))
                     this.Origin = value;
+                else if (name.Equals("X-Forwarded-For", StringComparison.OrdinalIgnoreCase))
+                    this.ForwardedFor = this.ForwardedFor is null ? value : this.ForwardedFor + ", " + value;
+                else if (name.Equals("X-Real-IP", StringComparison.OrdinalIgnoreCase))
+                    this.RealIP = value;
             }
 
             if (!request.StartsWith("GET ", StringComparison.Ordinal) || !upgrade || string.IsNullOrEmpty(key))
@@ -157,6 +172,16 @@ namespace Goose
                 return;
             }
 
+            if (!this.OriginAllowed())
+            {
+                const string body = "This game server does not accept connections from this website.";
+                result.Response = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: " +
+                    body.Length + "\r\n\r\n" + body);
+                result.Closed = true;
+                return;
+            }
+
             result.Response = Encoding.ASCII.GetBytes(
                 "HTTP/1.1 101 Switching Protocols\r\n" +
                 "Upgrade: websocket\r\n" +
@@ -164,6 +189,41 @@ namespace Goose
                 "Sec-WebSocket-Accept: " + AcceptKey(key) + "\r\n\r\n");
             result.HandshakeCompleted = true;
             this.Open = true;
+        }
+
+        internal bool OriginAllowed()
+        {
+            if (this.allowedOrigins.Count == 0) return true;
+            if (string.IsNullOrWhiteSpace(this.Origin)) return false;
+            string origin = this.Origin.Trim().TrimEnd('/');
+            return this.allowedOrigins.Any(o => string.Equals(o?.Trim().TrimEnd('/'), origin, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal string ClientAddress(string socketAddress, IReadOnlyCollection<string> trustedProxies)
+        {
+            if (!IsTrusted(socketAddress, trustedProxies)) return socketAddress;
+
+            string? candidate = null;
+            if (!string.IsNullOrWhiteSpace(this.ForwardedFor))
+                // Only the last entry was added by the proxy; earlier ones come from the browser.
+                candidate = this.ForwardedFor.Split(',').Select(s => s.Trim()).LastOrDefault(s => s.Length > 0);
+            if (string.IsNullOrEmpty(candidate))
+                candidate = this.RealIP?.Trim();
+
+            return Normalize(candidate) ?? socketAddress;
+        }
+
+        private static bool IsTrusted(string socketAddress, IReadOnlyCollection<string> trustedProxies)
+        {
+            string? socket = Normalize(socketAddress);
+            return socket is not null && trustedProxies.Any(p => Normalize(p) == socket);
+        }
+
+        internal static string? Normalize(string? address)
+        {
+            if (string.IsNullOrWhiteSpace(address) || !IPAddress.TryParse(address.Trim(), out var ip)) return null;
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            return ip.ToString();
         }
 
         private void ReadFrames(FeedResult result)

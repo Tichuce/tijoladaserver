@@ -1,0 +1,23 @@
+# Aspereta browser client, public setup (see ..\DEPLOY.md).
+#
+# Caddy gets and renews the HTTPS certificate by itself, serves the game page, wiki and
+# converted assets from ..\www, and passes /ws to the game server's WebSocket listener,
+# which keeps listening on this machine only (127.0.0.1:2007). It adds X-Forwarded-For,
+# so the game server sees each player's real address (WebSocketTrustedProxies).
+#
+# Run run-caddy.bat. With Cloudflare Tunnel instead, Caddy is not needed (DEPLOY.md).
+
+play.tijolada.com {
+	encode zstd gzip
+
+	# Browser game connections: wss://play.tijolada.com/ws -> ws://127.0.0.1:2007
+	handle /ws {
+		reverse_proxy 127.0.0.1:2007
+	}
+
+	# Everything else: the game page (/), the wiki (/wiki/) and the assets.
+	handle {
+		root * ../www
+		file_server
+	}
+}

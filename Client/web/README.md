@@ -227,11 +227,21 @@ If the port can't be bound, the server logs an error and carries on with TCP onl
 Browser connections are ordinary sockets inside the server, so the per-IP connection
 limits, login throttling, logs and `LoginEvent` all see the browser's real address.
 
+## Putting it online
+
+Live at https://play.tijolada.com/. See [DEPLOY.md](DEPLOY.md): a Cloudflare Tunnel in front
+(HTTPS for the page, `wss://play.tijolada.com/ws` for the game; Caddy with `deploy/Caddyfile`
+is the alternative), the game's WebSocket listener stays on 127.0.0.1, and two server settings:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `WebSocketAllowedOrigins` | `[]` | Web addresses allowed to open a game connection (`Origin` header), e.g. `["https://play.tijolada.com"]`. Empty allows any (local prototype). Others get `403`. |
+| `WebSocketTrustedProxies` | `[]` | Proxy addresses (e.g. `["127.0.0.1"]`) whose `X-Forwarded-For` gives the player's real address for per-IP limits, login throttling, bans and logs. |
+
+On an https page the login form defaults to `wss://<same host>/ws`; locally it stays
+`ws://<host>:2007/`. Logins over plain `ws://` should stay on localhost.
+
 ## Not done yet (deliberately)
 
-- **Public deployment:** `wss://` with a TLS certificate (for example a reverse proxy
-  such as Caddy or nginx in front of port 2007 that forwards the client IP, or TLS
-  terminated in the server), an `Origin` allow-list, and keeping 2006 off the internet.
-  Logins over plain `ws://` must stay on localhost.
 - **Server-side settings:** the browser keeps the server address and character name in
   localStorage. Passwords are never stored.

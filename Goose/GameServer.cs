@@ -284,7 +284,7 @@ namespace Goose
                                 // A browser only becomes a game connection once its WebSocket
                                 // handshake completes (see ReceiveWebSocket).
                                 if (sock == this.webSocketListen)
-                                    WebSocketTransport.Register(newSocket);
+                                    WebSocketTransport.Register(newSocket, this.Settings.WebSocketAllowedOrigins);
                                 else
                                     this.gameworld.NewConnection(newSocket);
                             }
@@ -381,7 +381,20 @@ namespace Goose
                 sock.Send(result.Response);
 
             if (result.HandshakeCompleted)
+            {
+                string? socketIP = this.ConnectionIP(sock);
+                if (socketIP is not null)
+                {
+                    string clientIP = webSocket.ClientAddress(socketIP, this.Settings.WebSocketTrustedProxies);
+                    if (clientIP != socketIP && !this.RekeyConnection(sock, clientIP))
+                    {
+                        this.DropSocket(sock);
+                        return;
+                    }
+                }
+
                 this.gameworld.NewConnection(sock);
+            }
 
             foreach (var message in result.Messages)
             {
@@ -472,7 +485,7 @@ namespace Goose
          * every one of them was walked twice per Socket.Select.
          *
          */
-        private bool TryRegisterConnection(Socket sock)
+        internal bool TryRegisterConnection(Socket sock)
         {
             if (this.sockets.Count >= this.Settings.MaxConnections)
             {
@@ -502,6 +515,30 @@ namespace Goose
             this.connectionsPerIP[ip] = count + 1;
             this.connections[sock] = new ConnectionInfo { IP = ip, AcceptedAt = DateTime.UtcNow };
 
+            return true;
+        }
+
+        internal bool RekeyConnection(Socket sock, string ip)
+        {
+            if (!this.connections.TryGetValue(sock, out ConnectionInfo? info)) return false;
+            if (info.IP == ip) return true;
+
+            this.connectionsPerIP.TryGetValue(ip, out int count);
+            if (count >= this.Settings.MaxConnectionsPerIP)
+            {
+                log.Warn("Refusing connection from " + ip + " (via proxy " + info.IP + "): at MaxConnectionsPerIP (" +
+                         this.Settings.MaxConnectionsPerIP + ").");
+                return false;
+            }
+
+            if (this.connectionsPerIP.TryGetValue(info.IP, out int old))
+            {
+                if (old <= 1) this.connectionsPerIP.Remove(info.IP);
+                else this.connectionsPerIP[info.IP] = old - 1;
+            }
+            this.connectionsPerIP[ip] = count + 1;
+            log.Info("Browser connection from " + ip + " via proxy " + info.IP + ".");
+            info.IP = ip;
             return true;
         }
 

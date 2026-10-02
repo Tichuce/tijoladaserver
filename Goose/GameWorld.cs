@@ -547,7 +547,7 @@ namespace Goose
          */
         public void NewConnection(Socket sock)
         {
-            log.Info("Connection attempt: " + sock.RemoteEndPoint!.ToString());
+            log.Info("Connection attempt: " + (this.GameServer?.ConnectionIP(sock) ?? sock.RemoteEndPoint!.ToString()));
 
             if (this.Settings.ServerType == "Illutia")
             {

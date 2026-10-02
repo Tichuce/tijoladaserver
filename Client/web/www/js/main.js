@@ -92,7 +92,20 @@ function save(key, value) {
     catch { /* private mode */ }
 }
 const params = new URLSearchParams(location.search);
-serverInput.value = params.get("ws") ?? load("server") ?? `ws://${location.hostname || "localhost"}:2007/`;
+serverInput.value = params.get("ws") ?? savedServer() ?? defaultServer();
+/**
+ * Where the game's WebSocket is: served over https (the public setup, see DEPLOY.md) it is
+ * wss:// on the same site at /ws, through the reverse proxy; locally it is the game server's
+ * own listener on port 2007.
+ */
+function defaultServer() {
+    return location.protocol === "https:" ? `wss://${location.host}/ws` : `ws://${location.hostname || "localhost"}:2007/`;
+}
+/** A saved address, unless it is plain ws:// on an https page (browsers block that). */
+function savedServer() {
+    const saved = load("server");
+    return saved && !(location.protocol === "https:" && saved.startsWith("ws://")) ? saved : null;
+}
 userInput.value = load("username") ?? "";
 (userInput.value ? passInput : userInput).focus();
 // ---- login / connection lifecycle ----

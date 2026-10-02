@@ -39,6 +39,9 @@ namespace Goose
          */
         public string WebSocketIP { get; set; } = "127.0.0.1";
         public int WebSocketPort { get; set; } = 2007;
+
+        public List<string> WebSocketAllowedOrigins { get; set; } = new();
+        public List<string> WebSocketTrustedProxies { get; set; } = new();
         public int MaxPlayers { get; set; }
         public int BaseHaste { get; set; }
         public int BaseSpellDamage { get; set; }
