@@ -273,7 +273,7 @@ button.small { padding: 2px 10px; font-size: 12px; font-weight: normal; backgrou
 /* ---- Classic look: the game's skin (Window.ini layout, colour-keyed bitmaps) ---- */
 
 /* Server windows: the skin bitmap is the window; children sit at Window.ini offsets. */
-#windows { --ui-scale: 1; }
+:root { --ui-scale: 1; }
 .game-window.skinned {
   display: block;
   min-width: 0;
@@ -394,3 +394,66 @@ body.classic .card .meter.skinned { width: var(--skin-w); }
 #party.skinned .bars .hp { background: rgb(0, 252, 0); }
 #party.skinned .bars .mp { background: rgb(0, 0, 248); }
 .game-window.skinned .skin-buttons, .game-window.skinned .close-box { z-index: 1; }
+
+/* Character window ([Character]) and buff bar ([SpellEffects]), floating like the desktop's. */
+.game-window.skinned.client-window .slot { position: absolute; }
+.game-window.skinned.client-window .slot canvas { width: 32px; height: 32px; }
+.game-window.skinned.client-window .labels { position: absolute; inset: 0; pointer-events: none; }
+body.classic .tabs button[data-tab="equipment"], body.classic .tabs button[data-tab="stats"] { font-style: italic; }
+
+/* Chat box ([Chat]): 8 lines in the game font over the skin bitmap, the input below them. */
+#chat-box.skinned {
+  position: relative;
+  width: var(--skin-w);
+  height: var(--skin-h);
+  margin: 6px auto 0;
+  zoom: var(--ui-scale);
+  background: var(--skin-image) no-repeat;
+  image-rendering: pixelated;
+}
+#chat-box.skinned #chat-log {
+  position: absolute;
+  left: var(--obj-x);
+  top: var(--obj-y);
+  width: var(--obj-w);
+  height: var(--obj-h);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  scrollbar-width: none;
+}
+#chat-box.skinned #chat-log::-webkit-scrollbar { display: none; }
+#chat-box.skinned #chat-log .line { display: block; line-height: 0; }
+#chat-box.skinned #chat-log canvas { display: block; image-rendering: pixelated; }
+#chat-box.skinned #chat-input {
+  position: absolute;
+  left: var(--input-x);
+  top: var(--input-y);
+  width: var(--input-w);
+  height: var(--input-h);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #fff;
+  font: 10px/11px "Courier New", monospace;
+}
+#chat-box.skinned #chat-input::placeholder { color: transparent; }
+
+/* Hover tooltips (Tooltip.cs): game font, white border, black (slots) or dark blue (ground). */
+#tooltip {
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  padding: 2px 5px 0;
+  border: 1px solid #fff;
+  color: #fff;
+  pointer-events: none;
+  transform-origin: top left;
+  white-space: nowrap;
+  image-rendering: pixelated;
+}
+#tooltip canvas { display: block; image-rendering: pixelated; }
+#tooltip.text { font: 10px/11px Verdana, Tahoma, sans-serif; }

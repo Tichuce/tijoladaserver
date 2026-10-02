@@ -3,7 +3,9 @@
 // existing packets (USE, CAST, /autohunt). Nothing here decides game state.
 import { dropTarget, setDrag } from "./dnd.js";
 import { EQUIP_SLOTS, INVENTORY_SLOTS, SPELL_SLOTS } from "./session.js";
-import { CHAR_H, CHAR_W, FONT_SHEET, drawGameText } from "./skin.js";
+import { CHAR_H, CHAR_W, FONT_SHEET, coords, drawGameText, objectPosition } from "./skin.js";
+import { draggable } from "./windows.js";
+import { setTip } from "./tooltip.js";
 /**
  * Paper-doll positions of the 13 character-window slots ([Character] equipN in the skin's
  * Window.ini, Maisemore). Slot 14, if the server uses it, goes underneath.
@@ -30,7 +32,16 @@ export class Panels {
         this.equipDoll = $("equipment");
         this.partyBox = $("party");
         this.classic = false;
+        this.skin = null;
         this.group = null;
+        this.equipCells = [];
+        this.layer = null;
+        this.windows = null;
+        /** Classic look: the floating character window ([Character]) and buff bar ([SpellEffects]). */
+        this.characterWindow = null;
+        this.characterOpen = false;
+        this.characterLabels = "";
+        this.buffWindow = null;
         this.buildGrid(this.inventoryGrid, INVENTORY_SLOTS, "item");
         this.buildGrid(this.spellGrid, SPELL_SLOTS, "spell");
         this.buildEquipment();
@@ -72,8 +83,14 @@ export class Panels {
      * own bitmaps and Window.ini layout ([Inventory], [SpellBook], [HotButtons], [HPbar]...,
      * [Group]); off, or without a converted skin, the plain look.
      */
+    /** Where the classic look's floating windows go (the server windows' layer). */
+    useWindowLayer(layer, windows) {
+        this.layer = layer;
+        this.windows = windows;
+    }
     setLook(skin, classic) {
         this.classic = classic && !!skin;
+        this.skin = this.classic ? skin : null;
         const use = (el, section) => {
             const sw = this.classic ? skin.window(section) : null;
             const size = sw ? skin.size(section) : null;
@@ -102,9 +119,16 @@ export class Panels {
             use($(`${id}-fill`).parentElement, section);
         this.group = this.classic ? skin.window("Group") : null;
         document.body.classList.toggle("classic", this.classic);
+        this.buildCharacterWindow();
+        this.buildBuffWindow();
         this.dirty = true;
     }
+    /** Classic look: Equip / Stats (and E, C) open and close the character window instead. */
     showTab(name) {
+        if (this.characterWindow && (name === "equipment" || name === "stats")) {
+            this.toggleCharacter();
+            return;
+        }
         for (const tab of document.querySelectorAll(".tabs button"))
             tab.classList.toggle("active", tab.dataset.tab === name);
         for (const panel of document.querySelectorAll(".tab-panel"))
@@ -174,15 +198,21 @@ export class Panels {
                 });
                 return row;
             }));
-        // Buffs.
+        // Buffs: double-click removes one, if the server allows it for that buff (KBUF).
         this.buffRow.replaceChildren();
-        for (const buff of s?.buffs ?? []) {
-            if (!buff)
-                continue;
-            const icon = this.icon(buff.graphic, null);
-            icon.title = buff.name;
-            this.buffRow.appendChild(icon);
-        }
+        if (this.buffWindow)
+            this.renderBuffWindow(this.buffWindow);
+        else
+            (s?.buffs ?? []).forEach((buff, slot) => {
+                if (!buff)
+                    return;
+                const icon = this.icon(buff.graphic, null);
+                setTip(icon, buff.name);
+                icon.addEventListener("dblclick", () => this.session?.killBuff(slot));
+                this.buffRow.appendChild(icon);
+            });
+        if (this.characterWindow)
+            this.renderCharacterLabels(this.characterWindow);
         // Inventory and spellbook.
         for (let i = 0; i < INVENTORY_SLOTS; i++) {
             const item = s?.inventory[i] ?? null;
@@ -192,11 +222,11 @@ export class Panels {
         for (let i = 0; i < SPELL_SLOTS; i++) {
             const spell = s?.spells[i] ?? null;
             const cell = this.spellGrid.children[i];
-            this.fillCell(cell, spell?.graphic ?? 0, null, spell ? `${spell.name}${spell.targetable ? " (target)" : ""}` : "", "");
+            this.fillCell(cell, spell?.graphic ?? 0, null, spell?.name ?? "", "");
         }
         for (let i = 0; i < EQUIP_SLOTS; i++) {
             const line = s?.equipment[i] ?? null;
-            const cell = this.equipDoll.children[i];
+            const cell = this.equipCells[i];
             this.fillCell(cell, line?.graphic ?? 0, line?.tint[3] ? line.tint : null, line?.text ?? "", "");
         }
         // Hotkeys follow whatever is in the linked slot now.
@@ -247,6 +277,187 @@ export class Panels {
             nodes.push(row);
         });
         this.partyBox.replaceChildren(...nodes);
+    }
+    // ---- classic look: character window and buff bar -----------------------------------
+    /** A floating window on a skin bitmap, in the server windows' layer. */
+    skinnedWindow(section, size, where) {
+        const el = document.createElement("section");
+        el.className = "game-window skinned client-window";
+        el.dataset.section = section.name;
+        el.style.width = `${size[0]}px`;
+        el.style.height = `${size[1]}px`;
+        el.style.backgroundImage = `url("${this.skin.image(section.image)}")`;
+        el.style.setProperty("--unfocused", String(section.alpha[0] / 255));
+        el.style.setProperty("--focused", String(section.alpha[1] / 255));
+        el.dataset.where = where;
+        el.addEventListener("pointerdown", () => this.windows?.bringToFront(el), { capture: true });
+        draggable(el, el);
+        const content = document.createElement("div");
+        content.className = "content";
+        el.appendChild(content);
+        if (section.closeBox) {
+            const [bx, by, bw, bh] = section.closeBox;
+            const box = document.createElement("button");
+            box.type = "button";
+            box.className = "close-box";
+            box.title = "Close";
+            Object.assign(box.style, { left: `${bx}px`, top: `${by}px`, width: `${bw}px`, height: `${bh}px` });
+            el.appendChild(box);
+        }
+        return el;
+    }
+    /** First time a floating window is shown: centred, or top-right (the layer has a size then). */
+    placeOnce(el) {
+        if (el.dataset.placed || !this.layer || this.layer.clientWidth === 0)
+            return;
+        const layer = this.layer;
+        const scale = Number.parseFloat(getComputedStyle(layer).getPropertyValue("--ui-scale")) || 1;
+        const w = el.offsetWidth * scale, h = el.offsetHeight * scale;
+        const centre = el.dataset.where === "centre";
+        el.style.left = `${Math.max(0, Math.round(centre ? (layer.clientWidth - w) / 2 : layer.clientWidth - w - 8))}px`;
+        el.style.top = `${Math.max(0, Math.round(centre ? (layer.clientHeight - h) / 2 : 8))}px`;
+        el.dataset.placed = "1";
+    }
+    /**
+     * CharacterWindow: the paper doll at objoff + equipN and the stat labels at their keys, on
+     * Character.bmp. The equipment cells are the same ones the plain look uses, moved here.
+     */
+    buildCharacterWindow() {
+        this.characterWindow?.remove();
+        this.characterWindow = null;
+        this.characterLabels = "";
+        const section = this.skin?.window("Character");
+        const size = section ? this.skin.size("Character") : null;
+        if (!section || !size || !this.layer) {
+            // Plain look: the cells go back to the side panel's paper doll.
+            this.equipCells.forEach((cell, i) => {
+                const [x, y] = EQUIP_LAYOUT[i] ?? [14 + (i % 5) * 34, 200];
+                Object.assign(cell.style, { left: `${x}px`, top: `${y}px`, width: "", height: "", display: "" });
+                this.equipDoll.appendChild(cell);
+            });
+            return;
+        }
+        const el = this.skinnedWindow(section, size, "centre");
+        el.classList.add("character");
+        el.hidden = !this.characterOpen;
+        el.querySelector(".close-box")?.addEventListener("click", () => this.toggleCharacter(false));
+        // Maisemore's [Character] cboff (184,4) is not where its bitmap paints the X (top right),
+        // so the painted X closes the window too.
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "close-box";
+        x.title = "Close";
+        Object.assign(x.style, { left: `${size[0] - 18}px`, top: "1px", width: "14px", height: "12px" });
+        x.addEventListener("click", () => this.toggleCharacter(false));
+        el.appendChild(x);
+        const content = el.querySelector(".content");
+        this.equipCells.forEach((cell, i) => {
+            const at = coords(section.raw[`equip${i + 1}`], 2);
+            if (!at || i >= section.rows * section.columns) {
+                cell.style.display = "none"; // slots this skin has no place for (BaseWindow ignores them)
+                content.appendChild(cell);
+                return;
+            }
+            Object.assign(cell.style, {
+                left: `${section.objOff[0] + at[0]}px`, top: `${section.objOff[1] + at[1]}px`,
+                width: `${section.objDim[0]}px`, height: `${section.objDim[1]}px`, display: "",
+            });
+            content.appendChild(cell);
+        });
+        const labels = document.createElement("div");
+        labels.className = "labels";
+        content.appendChild(labels);
+        dropTarget(el, (payload) => {
+            if (payload.type === "item")
+                this.session?.moveItem(payload.place, { kind: "equipment", slot: 0 });
+        });
+        this.layer.appendChild(el);
+        this.characterWindow = el;
+    }
+    toggleCharacter(open = !this.characterOpen) {
+        this.characterOpen = open;
+        if (!this.characterWindow)
+            return;
+        this.characterWindow.hidden = !open;
+        if (open) {
+            this.placeOnce(this.characterWindow);
+            this.windows?.bringToFront(this.characterWindow);
+        }
+        this.dirty = true;
+    }
+    renderCharacterLabels(el) {
+        const section = this.skin?.window("Character");
+        const st = this.session?.status;
+        if (!section)
+            return;
+        const values = st ? {
+            name: this.session?.world?.player?.name ?? "", guild: st.guild, level: String(st.level), class: st.className,
+            hp: `${st.hp}/${st.maxHp}`, mp: `${st.mp}/${st.maxMp}`, sp: `${st.sp}/${st.maxSp}`,
+            tnl: String(this.session?.experience.experience ?? 0), gold: String(st.gold),
+            strength: String(st.str), stamina: String(st.sta), intelligence: String(st.int), dexterity: String(st.dex), ac: String(st.ac),
+            // SNF resist order is fire, water, earth, air, spirit.
+            fire: String(st.resists[0]), water: String(st.resists[1]), earth: String(st.resists[2]), air: String(st.resists[3]), spirit: String(st.resists[4]),
+        } : {};
+        const font = this.assets.sheet(FONT_SHEET);
+        const key = JSON.stringify([values, !!font]);
+        if (key === this.characterLabels)
+            return;
+        if (!font)
+            this.dirty = true;
+        else
+            this.characterLabels = key;
+        const labels = el.querySelector(".labels");
+        labels.replaceChildren();
+        for (const [name, text] of Object.entries(values)) {
+            const at = coords(section.raw[name], 2);
+            if (!at || !text)
+                continue;
+            const canvas = drawGameText(font, [text], "rgb(248,208,0)");
+            canvas.className = "text";
+            Object.assign(canvas.style, { position: "absolute", left: `${at[0] + 6}px`, top: `${at[1]}px` });
+            labels.appendChild(canvas);
+        }
+    }
+    /** BuffBarWindow ([SpellEffects]): shown while there are buffs; double-click removes one. */
+    buildBuffWindow() {
+        this.buffWindow?.remove();
+        this.buffWindow = null;
+        const section = this.skin?.window("SpellEffects");
+        const size = section ? this.skin.size("SpellEffects") : null;
+        this.buffRow.hidden = !!(section && size && this.layer);
+        if (!section || !size || !this.layer)
+            return;
+        const el = this.skinnedWindow(section, size, "top-right");
+        el.classList.add("buffs");
+        el.hidden = true;
+        this.layer.appendChild(el);
+        this.buffWindow = el;
+    }
+    renderBuffWindow(el) {
+        const section = this.skin?.window("SpellEffects");
+        if (!section)
+            return;
+        const buffs = this.session?.buffs ?? [];
+        el.hidden = !buffs.some((b) => b);
+        if (!el.hidden)
+            this.placeOnce(el);
+        const content = el.querySelector(".content");
+        content.replaceChildren();
+        buffs.forEach((buff, slot) => {
+            if (!buff || slot >= section.rows * section.columns)
+                return;
+            const cell = document.createElement("div");
+            cell.className = "slot";
+            const [x, y] = objectPosition(section, slot);
+            Object.assign(cell.style, { position: "absolute", left: `${x}px`, top: `${y}px`, width: `${section.objDim[0]}px`, height: `${section.objDim[1]}px` });
+            const icon = this.icon(buff.graphic, null);
+            if (icon.dataset.ready !== "1")
+                this.dirty = true;
+            cell.appendChild(icon);
+            setTip(cell, buff.name);
+            cell.addEventListener("dblclick", () => this.session?.killBuff(slot));
+            content.appendChild(cell);
+        });
     }
     buildGrid(grid, count, kind) {
         for (let i = 0; i < count; i++) {
@@ -302,6 +513,7 @@ export class Panels {
                     this.session?.moveItem(payload.place, { kind: "equipment", slot: i });
             });
             this.equipDoll.appendChild(cell);
+            this.equipCells.push(cell);
         }
         // Dropping anywhere on the doll equips too.
         dropTarget(this.equipDoll, (payload) => {
@@ -334,7 +546,7 @@ export class Panels {
     }
     fillCell(cell, graphic, tint, title, badge) {
         const key = `${graphic}|${tint?.join(",") ?? ""}|${badge}`;
-        cell.title = title;
+        setTip(cell, graphic > 0 ? title : null);
         cell.classList.toggle("empty", graphic <= 0);
         if (cell.dataset.drawn === key && cell.dataset.ready === "1")
             return;

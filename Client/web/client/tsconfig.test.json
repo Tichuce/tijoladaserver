@@ -12,6 +12,7 @@
     "src/assets.ts",
     "src/autohunt.ts",
     "src/skin.ts",
+    "src/tooltip.ts",
     "test/**/*.ts"
   ]
 }

@@ -6,6 +6,7 @@
 // Window.ini exactly like the desktop client's BaseWindow; otherwise simple floating panels.
 import { dropTarget, setDrag } from "./dnd.js";
 import { WINDOW_BUTTONS, WindowFrame } from "./protocol.js";
+import { setTip } from "./tooltip.js";
 import { BUTTON_NAMES, CHAR_H, CHAR_W, FONT_SHEET, drawGameText, objectPosition, skinSectionForFrame, wrapText } from "./skin.js";
 /** Slot counts of the container frames (Container2 ... Container10 in Window.ini). */
 const CONTAINER_SLOTS = {
@@ -95,7 +96,7 @@ export class Windows {
     // ---- shared slot behaviour -----------------------------------------------------------
     wireSlot(cell, w, i, line) {
         if (line) {
-            cell.title = line.text;
+            setTip(cell, line.text);
             cell.draggable = w.frame !== WindowFrame.Vendor;
             cell.addEventListener("dragstart", (ev) => setDrag(ev, { type: "item", place: { kind: "window", windowId: w.id, slot: i } }));
             cell.addEventListener("contextmenu", (ev) => {
@@ -387,31 +388,41 @@ export class Windows {
         footer.hidden = footer.childElementCount === 0;
     }
     makeDraggable(el, handle, key) {
-        handle.addEventListener("pointerdown", (ev) => {
-            const target = ev.target;
-            // Buttons, slots and option rows keep their own clicks and drags.
-            if (target.closest("button, .slot"))
-                return;
-            const startX = ev.clientX, startY = ev.clientY;
-            const left = el.offsetLeft, top = el.offsetTop;
-            handle.setPointerCapture(ev.pointerId);
-            const move = (e) => {
-                const x = Math.max(0, left + e.clientX - startX);
-                const y = Math.max(0, top + e.clientY - startY);
-                el.style.left = `${x}px`;
-                el.style.top = `${y}px`;
-                this.positions.set(key, [x, y]);
-            };
-            const up = () => {
-                handle.removeEventListener("pointermove", move);
-                handle.removeEventListener("pointerup", up);
-            };
-            handle.addEventListener("pointermove", move);
-            handle.addEventListener("pointerup", up);
-        });
+        draggable(el, handle, (x, y) => this.positions.set(key, [x, y]));
+    }
+    /** Brings a client-side skinned window (character, buffs) to the front like a server one. */
+    bringToFront(el) {
+        this.zTop++;
+        el.style.zIndex = String(this.zTop);
+        for (const other of this.layer.querySelectorAll(".game-window"))
+            other.classList.toggle("focused", other === el);
     }
 }
-function place(el, x, y, w, h) {
+/** Drags `el` by `handle`; buttons, slots and option rows keep their own clicks and drags. */
+export function draggable(el, handle, moved) {
+    handle.addEventListener("pointerdown", (ev) => {
+        const target = ev.target;
+        if (target.closest("button, .slot"))
+            return;
+        const startX = ev.clientX, startY = ev.clientY;
+        const left = el.offsetLeft, top = el.offsetTop;
+        handle.setPointerCapture(ev.pointerId);
+        const move = (e) => {
+            const x = Math.max(0, left + e.clientX - startX);
+            const y = Math.max(0, top + e.clientY - startY);
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            moved?.(x, y);
+        };
+        const up = () => {
+            handle.removeEventListener("pointermove", move);
+            handle.removeEventListener("pointerup", up);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+    });
+}
+export function place(el, x, y, w, h) {
     el.style.position = "absolute";
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;

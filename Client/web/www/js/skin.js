@@ -69,7 +69,7 @@ export function objectPosition(w, index) {
 /** The Window.ini sections the browser draws (others, like [LoginScreen], are not loaded). */
 export const USED_SECTIONS = [
     "Vendor", "BlankMessage", "BlankMessage3", "Container2", "Container4", "Container6", "Container8", "Container10",
-    "Inventory", "SpellBook", "HotButtons", "HPbar", "MPbar", "SPbar", "XPbar", "Group",
+    "Inventory", "SpellBook", "HotButtons", "HPbar", "MPbar", "SPbar", "XPbar", "Group", "Character", "SpellEffects", "Chat",
 ];
 export class Skin {
     constructor(name, baseUrl, windowIni, buttonIni) {

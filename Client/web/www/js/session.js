@@ -567,6 +567,11 @@ export class Session {
         }
         this.events.stateChanged();
     }
+    /** Removes a buff from the buff bar, if its effect allows it (KBUF, 1-based like BUF). */
+    killBuff(slot) {
+        if (this.world && this.buffs[slot])
+            this.connection.send(ClientPackets.killBuff(slot));
+    }
     /** Option-list line click (0-based line on the current page). The server closes the list. */
     windowLineClick(windowId, line) {
         const w = this.windows.get(windowId);

@@ -4,7 +4,8 @@ import { Assets, TILE_SIZE } from "./assets.js";
 import { dropTarget } from "./dnd.js";
 import { Panels } from "./panels.js";
 import { Windows } from "./windows.js";
-import { Skin } from "./skin.js";
+import { CHAR_H, CHAR_W, FONT_SHEET, Skin, coords, drawGameText, wrapText } from "./skin.js";
+import { Tooltips, groundItemTip } from "./tooltip.js";
 import { ChatType, Direction } from "./protocol.js";
 import { Credentials, Session, SessionPhase } from "./session.js";
 
@@ -41,6 +42,7 @@ ctx.imageSmoothingEnabled = false;
 const assets = new Assets("assets");
 const panels = new Panels(assets);
 const windows = new Windows(document.getElementById("windows")!, assets, (g, t) => panels.icon(g, t));
+panels.useWindowLayer(document.getElementById("windows")!, windows);
 assets.onSheetLoaded(() => windows.render());
 let assetsReady: Promise<void> | null = null;
 
@@ -54,6 +56,7 @@ function applyLook(): void {
   const on = classicLook && !!skin;
   panels.setLook(skin, on);
   windows.setLook(skin, on);
+  applyChatLook(on ? skin : null);
   lookButton.hidden = !skin;
   lookButton.textContent = on ? "Plain look" : "Classic look";
   lookButton.title = on ? "Switch to the plain browser look" : `Use the game's ${skin?.name ?? ""} skin`;
@@ -71,10 +74,9 @@ void Skin.load("assets").then((loaded) => {
   applyLook();
 });
 
-// Skinned windows are drawn at the game screen's scale, like the desktop client's UI.
-const windowLayer = document.getElementById("windows")!;
+// Skinned windows and the chat box are drawn at the game screen's scale, like the desktop UI.
 new ResizeObserver(() => {
-  windowLayer.style.setProperty("--ui-scale", String(canvas.clientWidth / SCREEN_W || 1));
+  document.documentElement.style.setProperty("--ui-scale", String(canvas.clientWidth / SCREEN_W || 1));
 }).observe(canvas);
 let session: Session | null = null;
 let lastCredentials: Credentials | null = null;
@@ -146,6 +148,7 @@ async function startSession(credentials: Credentials): Promise<void> {
   loginButton.textContent = "Enter";
   loginPanel.hidden = true;
   gamePanel.hidden = false;
+  chatLines.length = 0;
   chatLog.replaceChildren();
   showOverlay("Connecting…", false);
 
@@ -232,15 +235,79 @@ const CHAT_CLASS: Partial<Record<ChatType, string>> = {
   [ChatType.Client]: "client",
 };
 
+/** ChatListBox colours, as the plain look's CSS classes use them too. */
+const CHAT_COLOUR: Record<string, string> = {
+  chat: "#ffffff", guild: "#88cc40", group: "#878aff", tell: "#f8d000", server: "#0092ff", client: "#fe511c", other: "#c8c8c8",
+};
+
+// The chat log keeps its lines so the look can be switched without losing them.
+const chatLines: Array<{ type: ChatType; text: string }> = [];
+/** Classic look: characters per chat row (the [Chat] object width less ChatListBox padding). */
+let chatChars = 0;
+let chatFontMissing = false;
+const chatBox = $<HTMLDivElement>("chat-box");
+
+function chatLineElement(type: ChatType, text: string): HTMLElement {
+  const cls = CHAT_CLASS[type] ?? "other";
+  const line = document.createElement("div");
+  line.className = `line ${cls}`;
+  if (chatChars > 0) {
+    // The game font, word-wrapped with a two-space indent like ChatListBox.AddText.
+    const rows = wrapText(text, chatChars).map((row, i) => (i > 0 ? `  ${row}` : row));
+    const font = assets.sheet(FONT_SHEET);
+    if (!font) chatFontMissing = true;
+    const canvas = drawGameText(font, rows, CHAT_COLOUR[cls]);
+    line.appendChild(canvas);
+    line.title = text;
+  } else {
+    line.textContent = text;
+  }
+  return line;
+}
+
 function addChat(type: ChatType, text: string): void {
   const atBottom = chatLog.scrollTop + chatLog.clientHeight >= chatLog.scrollHeight - 4;
-  const line = document.createElement("div");
-  line.className = `line ${CHAT_CLASS[type] ?? "other"}`;
-  line.textContent = text;
-  chatLog.appendChild(line);
+  chatLines.push({ type, text });
+  if (chatLines.length > MAX_CHAT_LINES) chatLines.shift();
+  chatLog.appendChild(chatLineElement(type, text));
   while (chatLog.childElementCount > MAX_CHAT_LINES) chatLog.firstElementChild?.remove();
   if (atBottom) chatLog.scrollTop = chatLog.scrollHeight;
 }
+
+function rebuildChat(): void {
+  chatLog.replaceChildren(...chatLines.map((l) => chatLineElement(l.type, l.text)));
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+/** Classic look: the chat box on the skin's [Chat] bitmap (ChatWindow layout). */
+function applyChatLook(s: Skin | null): void {
+  const section = s?.window("Chat");
+  const size = section ? s!.size("Chat") : null;
+  chatBox.classList.toggle("skinned", !!(section && size));
+  if (!section || !size) {
+    chatChars = 0;
+    chatBox.removeAttribute("style");
+  } else {
+    const input = coords(section.raw.obj2off, 2) ?? [section.objOff[0], section.objOff[1] + section.rows * section.objDim[1]];
+    const inputDim = coords(section.raw.obj2dim, 2) ?? section.objDim;
+    chatChars = Math.floor((section.objDim[0] - 12) / CHAR_W);
+    Object.entries({
+      "--skin-image": `url("${s!.image(section.image)}")`, "--skin-w": `${size[0]}px`, "--skin-h": `${size[1]}px`,
+      "--obj-x": `${section.objOff[0] + 6}px`, "--obj-y": `${section.objOff[1]}px`,
+      "--obj-w": `${section.objDim[0] - 12}px`, "--obj-h": `${section.rows * CHAR_H}px`,
+      "--input-x": `${input[0] + 6}px`, "--input-y": `${input[1]}px`, "--input-w": `${inputDim[0] - 12}px`, "--input-h": `${inputDim[1]}px`,
+    }).forEach(([k, v]) => chatBox.style.setProperty(k, v));
+  }
+  rebuildChat();
+}
+
+// Chat lines drawn before the font sheet arrived are redrawn once it is in.
+assets.onSheetLoaded(() => {
+  if (chatFontMissing && assets.sheet(FONT_SHEET)) {
+    chatFontMissing = false;
+    rebuildChat();
+  }
+});
 
 // Sent lines, for Up/Down recall (ChatWindow input history).
 const chatHistory: string[] = [];
@@ -350,6 +417,18 @@ function characterUnder(ev: MouseEvent) {
   const [camX, camY] = world.camera(SCREEN_W, SCREEN_H);
   return world.characterAt(Math.floor((px + camX) / TILE_SIZE), Math.floor((py + camY) / TILE_SIZE));
 }
+
+// Hover tooltips for slots (data-tip) and for items on the ground (Map.OnMouseOverMap).
+const tooltips = new Tooltips(() => assets.sheet(FONT_SHEET));
+canvas.addEventListener("mousemove", (ev) => {
+  const world = session?.world;
+  if (!world) return tooltips.setMapTip(null);
+  const [px, py] = screenPoint(ev);
+  const [camX, camY] = world.camera(SCREEN_W, SCREEN_H);
+  const object = world.objectAt(Math.floor((px + camX) / TILE_SIZE), Math.floor((py + camY) / TILE_SIZE));
+  tooltips.setMapTip(object ? groundItemTip(object.name, object.stack) : null, ev.clientX, ev.clientY);
+});
+canvas.addEventListener("mouseleave", () => tooltips.setMapTip(null));
 
 // While targeting, clicking a character picks it.
 canvas.addEventListener("click", (ev) => {

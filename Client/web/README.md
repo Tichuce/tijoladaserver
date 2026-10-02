@@ -102,8 +102,23 @@ desktop client's `BaseWindow` reads them:
   the party list (`[Group]`, names with 1px HP/MP bars like `PartyWindow`).
 - **Plain look / Classic look** button in the top bar switches between this and the plain
   browser look (remembered in the browser). Without converted skins the plain look is used.
+- **Character window** (`[Character]`): the paper doll (`equip1`...`equip13`) and the stat
+  labels (name, guild, class, level, HP/MP/SP, experience, gold, stats, resists) in yellow, as
+  `CharacterWindow`. In the classic look the Equip and Stats tabs, and the E / C keys, open and
+  close it as a floating window. (Maisemore's `cboff` for it points at an empty spot, so the
+  painted X also closes it.)
+- **Buff bar** (`[SpellEffects]`): a floating bar that shows while buffs are active.
+- **Chat box** (`[Chat]`): the last lines in the game font with the chat colours, word-wrapped
+  with a two-space indent like `ChatListBox`, and the input line below; scroll with the wheel.
 - Bank, trade and the other frames the desktop client has no skin section for keep the plain
   window style.
+- **Hover tooltips** like the desktop client (`Tooltip.cs`), in both looks: the name of the
+  item, spell or buff under the mouse in the game font, white on black with a white border,
+  just above the cursor (inventory, equipment, spellbook, hotkeys, buffs, vendor and container
+  windows); items on the ground show "name (stack)" on dark blue below the cursor. Right-click
+  still asks the server for the full item details (`GID`).
+- **Removing a buff:** double-click it on the buff bar (both looks) sends `KBUF`; the server
+  only removes buffs whose effect allows it.
 
 **Not done, on purpose or for now:**
 - Sound: the server sends no sound events and the desktop client plays none, so there is
@@ -111,7 +126,6 @@ desktop client's `BaseWindow` reads them:
 - Trade and letter windows: the server never opens them (frames 24/25 are never sent).
 - The custom-item window (frame 28, needs Illutia custom tickets) and the GM log viewer
   (frame 29, GM only) open as plain windows without their special controls.
-- Skin graphics for the character window (paper doll and stats), chat box and buff bar.
 
 Packets the browser doesn't handle are listed in `aspereta.session.unhandled` in the
 browser console.

@@ -210,3 +210,10 @@ test("option lists, opening lines and server close (Packets.WindowLine / Opening
   assert.equal(ClientPackets.windowLineClick(7, w), "WBC27,7,1201,0,0");
   assert.equal(ClientPackets.windowButton(3, w), "WBC4,7,1201,0,0", "Next is ButtonTypes.Next (4)");
 });
+
+test("buff removal is KBUF with the 1-based bar slot (NetworkClient.KillBuff)", () => {
+  assert.equal(ClientPackets.killBuff(0), "KBUF1");
+  assert.equal(ClientPackets.killBuff(7), "KBUF8");
+  const buf = parse("BUF2,110033,Rampant Rage");
+  assert.deepEqual(buf, { type: "buffSlot", slot: 1, buff: { graphic: 110033, name: "Rampant Rage" } });
+});

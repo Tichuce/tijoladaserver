@@ -350,6 +350,8 @@ export const ClientPackets = {
     windowToInventory: (windowId, from, to) => `WTI${windowId},${from + 1},${to + 1}`,
     windowToWindow: (fromWindow, from, toWindow, to) => `WTW${fromWindow},${from + 1},${toWindow},${to + 1}`,
     windowButton: (button, w) => `WBC${button + 1},${w.id},${w.npcId},${w.unknown1},${w.unknown2}`,
+    /** NetworkClient.KillBuff: remove the buff in bar slot `slot` (0-based). */
+    killBuff: (slot) => `KBUF${slot + 1}`,
     /** Click on line `line` (0-based, current page) of an option list. */
     windowLineClick: (line, w) => `WBC${LINE_CLICK_OFFSET + line},${w.id},${w.npcId},${w.unknown1},${w.unknown2}`,
     vendorBuy: (npcId, slot) => `VPI${npcId},${slot + 1}`,
