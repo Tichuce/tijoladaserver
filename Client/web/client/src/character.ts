@@ -102,6 +102,10 @@ export class Character {
     this.updateAnimations();
   }
 
+  get hasBody(): boolean {
+    return this.slots[Slot.Body] !== null;
+  }
+
   get displayName(): string {
     return [this.title, this.name, this.surname].filter((s) => s && s.trim().length > 0).join(" ");
   }

@@ -355,6 +355,8 @@ namespace AsperetaClient
 
         public void RenderName(int x_offset, int y_offset)
         {
+            if (this.EquippedAnimations[(int)DrawAnimations.Body] == null) return;
+
             string name = (string.IsNullOrWhiteSpace(Title) ? "" : Title + " ") + Name + (string.IsNullOrWhiteSpace(Surname) ? "" : " " + Surname);
             int x = (this.PixelXi - x_offset) + this.GetXOffset() + this.GetWidth() / 2 - (name.Length * GameClient.FontRenderer.CharWidth) / 2;
             int y = this.PixelYi - y_offset + this.GetYOffset() - GameClient.FontRenderer.CharHeight - 7;

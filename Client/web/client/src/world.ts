@@ -226,7 +226,7 @@ export class World {
 
   private renderName(ctx: CanvasRenderingContext2D, c: Character, camX: number, camY: number): void {
     const name = c.displayName;
-    if (!name) return;
+    if (!name || !c.hasBody) return;
     const box = c.bodyBox();
     const w = ctx.measureText(name).width;
     const x = Math.round(Math.trunc(c.pixelX) - camX + box.x + box.w / 2 - w / 2);

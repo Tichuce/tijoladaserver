@@ -80,6 +80,9 @@ export class Character {
         this.hpPercent = data.hpPercent;
         this.updateAnimations();
     }
+    get hasBody() {
+        return this.slots[Slot.Body] !== null;
+    }
     get displayName() {
         return [this.title, this.name, this.surname].filter((s) => s && s.trim().length > 0).join(" ");
     }

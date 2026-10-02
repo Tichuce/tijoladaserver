@@ -210,7 +210,7 @@ export class World {
     }
     renderName(ctx, c, camX, camY) {
         const name = c.displayName;
-        if (!name)
+        if (!name || !c.hasBody)
             return;
         const box = c.bodyBox();
         const w = ctx.measureText(name).width;
