@@ -34,13 +34,20 @@ namespace Goose
                 server.RequestShutdown();
             };
 
-            using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            var stopped = new ManualResetEventSlim(false);
+            void StopAndWait(PosixSignalContext context)
             {
                 context.Cancel = true;
                 server.RequestShutdown();
-            });
+                // Windows ends the process as soon as a close/shutdown handler returns, so hold it until the save is done.
+                stopped.Wait(TimeSpan.FromSeconds(4));
+            }
+
+            using var sigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, StopAndWait);
+            using var sighup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, StopAndWait);
 
             server.Run();
+            stopped.Set();
 
             // Interactive stdin is owned by the console command reader thread (started when
             // input is not redirected). Waiting for a key here would hang after clean exit
