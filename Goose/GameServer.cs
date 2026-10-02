@@ -26,6 +26,12 @@ namespace Goose
         private static readonly TimeSpan PreLoginSweepInterval = TimeSpan.FromSeconds(5);
 
         private Socket listen = null!;
+
+        /**
+         * Optional second listener for browser clients (see WebSocketTransport). Null when
+         * WebSocketPort is 0 or the port could not be bound.
+         */
+        private Socket? webSocketListen = null;
         private List<Socket> sockets = new();
 
         /**
@@ -152,6 +158,42 @@ namespace Goose
             this.listen = this.CreateListenSocket();
 
             this.sockets.Add(this.listen);
+
+            WebSocketTransport.Clear();
+            this.webSocketListen = this.CreateWebSocketListenSocket();
+            if (this.webSocketListen is not null)
+                this.sockets.Add(this.webSocketListen);
+        }
+
+        /**
+         * CreateWebSocketListenSocket, the browser client entry point
+         *
+         * Optional: a failure here is logged and the server carries on with TCP only, since
+         * desktop clients must not lose the game because a browser port is taken.
+         *
+         */
+        internal Socket? CreateWebSocketListenSocket()
+        {
+            int port = this.Settings.WebSocketPort;
+            if (port <= 0) return null;
+
+            string ip = string.IsNullOrWhiteSpace(this.Settings.WebSocketIP) ? "127.0.0.1" : this.Settings.WebSocketIP;
+
+            Socket? socket = null;
+            try
+            {
+                socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                socket.Bind(new IPEndPoint(IPAddress.Parse(ip), port));
+                socket.Listen(10);
+                log.Info("WebSocket listener for browser clients on ws://" + ip + ":" + port + "/");
+                return socket;
+            }
+            catch (Exception e)
+            {
+                socket?.Dispose();
+                log.Error(e, "Cannot listen for WebSocket clients on " + ip + ":" + port + "; continuing without browser support.");
+                return null;
+            }
         }
 
         internal Socket CreateListenSocket()
@@ -227,18 +269,24 @@ namespace Goose
 
                 foreach (var sock in this.readList)
                 {
-                    if (sock == this.listen)
+                    if (sock == this.listen || sock == this.webSocketListen)
                     {
                         Socket? newSocket = null;
                         try
                         {
-                            newSocket = this.listen.Accept();
+                            newSocket = sock.Accept();
                             newSocket.Blocking = false;
 
                             if (this.TryRegisterConnection(newSocket))
                             {
                                 this.sockets.Add(newSocket);
-                                this.gameworld.NewConnection(newSocket);
+
+                                // A browser only becomes a game connection once its WebSocket
+                                // handshake completes (see ReceiveWebSocket).
+                                if (sock == this.webSocketListen)
+                                    WebSocketTransport.Register(newSocket);
+                                else
+                                    this.gameworld.NewConnection(newSocket);
                             }
                             else
                             {
@@ -272,6 +320,10 @@ namespace Goose
                             if (bytesRead <= 0)
                             {
                                 this.gameworld.LostConnection(sock);
+                            }
+                            else if (WebSocketTransport.TryGet(sock, out var webSocket))
+                            {
+                                this.ReceiveWebSocket(sock, webSocket, bytesRead);
                             }
                             else
                             {
@@ -311,6 +363,40 @@ namespace Goose
 
             if (!stopping)
                 this.Stop();
+        }
+
+        /**
+         * ReceiveWebSocket, unwraps browser frames into the normal receive path
+         *
+         * After the handshake the browser's messages are handed to GameWorld.Received exactly
+         * as a TCP client's bytes would be, so login, packet parsing and every game rule are
+         * the existing ones.
+         *
+         */
+        private void ReceiveWebSocket(Socket sock, WebSocketConnection webSocket, int bytesRead)
+        {
+            var result = webSocket.Feed(this.receiveBuffer, bytesRead);
+
+            if (result.Response is not null)
+                sock.Send(result.Response);
+
+            if (result.HandshakeCompleted)
+                this.gameworld.NewConnection(sock);
+
+            foreach (var message in result.Messages)
+            {
+                // A message can log the player out (LostConnection) mid-batch.
+                if (!this.sockets.Contains(sock)) return;
+                this.gameworld.Received(sock, message);
+            }
+
+            if (result.Closed && this.sockets.Contains(sock))
+            {
+                if (result.HandshakeCompleted || webSocket.Open)
+                    this.gameworld.LostConnection(sock);
+                else
+                    this.DropSocket(sock);
+            }
         }
 
         /**
@@ -428,6 +514,8 @@ namespace Goose
          */
         private void UnregisterConnection(Socket sock)
         {
+            WebSocketTransport.Remove(sock);
+
             if (!this.connections.TryGetValue(sock, out ConnectionInfo? info)) return;
 
             this.connections.Remove(sock);

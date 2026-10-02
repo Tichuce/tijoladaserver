@@ -32,6 +32,13 @@ namespace Goose
         public bool AutoCharacterCreation { get; set; }
         public string GameServerIP { get; set; } = null!;
         public int GameServerPort { get; set; }
+
+        /**
+         * Browser client entry point (WebSocket, see WebSocketTransport). 0 disables it.
+         * Defaults to this machine only; the public version will sit behind TLS (wss://).
+         */
+        public string WebSocketIP { get; set; } = "127.0.0.1";
+        public int WebSocketPort { get; set; } = 2007;
         public int MaxPlayers { get; set; }
         public int BaseHaste { get; set; }
         public int BaseSpellDamage { get; set; }
@@ -128,7 +135,7 @@ namespace Goose
 
         public bool AutoHuntEnabled { get; set; } = true;
         public int AutoHuntRadius { get; set; } = 12;
-        public int AutoHuntMinHPPercent { get; set; } = 30;
+        public int AutoHuntMinHPPercent { get; set; } = 5;
         public int AutoHuntStepMilliseconds { get; set; } = 350;
         public int PetVitaBuyAmount { get; set; }
         public int IncreasePetVitaBuyCost { get; set; }

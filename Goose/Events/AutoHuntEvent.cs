@@ -30,7 +30,9 @@ namespace Goose.Events
                 return "";
             if (!world.Settings.AutoHuntEnabled)
                 return "auto-hunt is disabled on this server.";
-            if (player.MaxHP > 0 && player.CurrentHP * 100 < player.MaxHP * world.Settings.AutoHuntMinHPPercent)
+            // Stops at or below AutoHuntMinHPPercent (5% by default). Only the player's HP is
+            // checked; nearby NPCs (aggressive or not) play no part in this decision.
+            if (player.MaxHP > 0 && player.CurrentHP * 100 <= player.MaxHP * world.Settings.AutoHuntMinHPPercent)
                 return "your HP is low.";
             if (player.Windows.Any(w => w.Type == Window.WindowTypes.Vendor))
                 return "you are trading with a vendor.";
@@ -74,7 +76,16 @@ namespace Goose.Events
             if (distance == 1)
             {
                 Face(player, DirectionTo(player, target), world);
+
+                long lastAttack = player.LastAttack;
                 new PlayerAttackEvent { Player = player }.Ready(world);
+
+                // PlayerAttackEvent only shows the swing to other players, because a manual
+                // attack is animated by the attacker's own client when the key is pressed.
+                // Auto-hunt swings start on the server, so the hunter's client also needs
+                // the same ATT packet or the character never plays its attack animation.
+                if (player.LastAttack != lastAttack)
+                    world.Send(player, P.Attack(player));
                 return;
             }
 

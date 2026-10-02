@@ -553,7 +553,7 @@ namespace Goose
             {
                 try
                 {
-                    sock.Send(Encoding.ASCII.GetBytes("IMN00000000" + "\x1"));
+                    sock.Send(WebSocketTransport.Wrap(sock, Encoding.ASCII.GetBytes("IMN00000000" + "\x1")));
                 }
                 // Client may already be gone by the time the handshake is sent.
                 catch (Exception) { }
@@ -789,7 +789,7 @@ namespace Goose
             data += "\x1";
             try
             {
-                sock.Send(Encoding.ASCII.GetBytes(data));
+                sock.Send(WebSocketTransport.Wrap(sock, Encoding.ASCII.GetBytes(data)));
             }
             // Pre-login rejection path; the caller (LoginEvent) disconnects after
             // sending, so a dead socket needs no drop here.

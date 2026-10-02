@@ -2912,7 +2912,8 @@ namespace Goose
         {
             if (this.sock is null) return true;
 
-            var bytes = Encoding.ASCII.GetBytes(data);
+            // Browser connections get the same bytes wrapped in a WebSocket frame.
+            var bytes = WebSocketTransport.Wrap(this.sock, Encoding.ASCII.GetBytes(data));
 
             lock (socketLock)
             {
