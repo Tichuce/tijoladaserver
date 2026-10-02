@@ -28,6 +28,8 @@ namespace Goose
             {
                 foreach (int ally in alliesString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries).Select(q => Convert.ToInt32(q)))
                 {
+                    if (ally == 0)
+                        continue;
                     NPCTemplate? a = handler.GetNPCTemplate(ally);
                     if (a is null)
                     {

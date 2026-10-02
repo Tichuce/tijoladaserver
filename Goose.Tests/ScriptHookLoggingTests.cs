@@ -207,6 +207,20 @@ public class ScriptHookLoggingTests
     }
 
     [Fact]
+    public void ResolveAllies_ZeroMeansNoAlly_WithoutWarning()
+    {
+        using var log = new CapturingLog();
+        var handler = new NPCHandler();
+        handler.AddTemplate(new NPCTemplate { NPCTemplateID = 7, Name = "Ally7", BaseStats = new AttributeSet() });
+        var npc = new NPCTemplate { NPCTemplateID = 101, Name = "ZeroAllyNpc", BaseStats = new AttributeSet() };
+
+        var allies = NPCHandler.ResolveAllies(npc, "0 7,000", handler);
+
+        Assert.Single(allies, a => a.NPCTemplateID == 7);
+        Assert.DoesNotContain(log.Messages, m => m.Contains("ZeroAllyNpc"));
+    }
+
+    [Fact]
     public void ResolveAllies_NonNumeric_LogsErrorAndReturnsEmpty()
     {
         using var log = new CapturingLog();
