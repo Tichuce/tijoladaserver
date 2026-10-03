@@ -49,6 +49,21 @@ The desktop client keeps working at the same time on port 2006.
 - **Auto-hunt button:** ON/PAUSED/OFF, driven by the server's own messages. Click
   sends `/autohunt on` or `/autohunt pause`; right-click sends `/autohunt off`. Auto-hunt
   steps are walked smoothly, like the desktop client.
+- **Auto-Hunt settings (⚙ next to the button):** a window with three tabs, saved on the
+  server per character (`player_properties`, key `autohunt`):
+  - **AS (attack spells):** priority list, per spell on/off, minimum MP %, range in tiles and,
+    for area spells, the minimum number of monsters it must hit. A "Distance" box chooses
+    melee (default) or ranged: keep within N tiles, stay at least M tiles away.
+  - **BS (buff spells):** priority list, minimum HP % and MP %, recast N seconds before the
+    buff ends (or only once it is gone). Active buffs are not recast.
+  - **HS (healing spells):** heal below HP %, minimum MP %, range, and for group or area
+    heals the minimum number of injured allies (one ally only when badly hurt).
+  The server classifies every spell from its own data (the same data as the wiki) and sends
+  only spells you know. A status line under the button shows what auto-hunt is doing
+  (Active, Waiting, Moving, Casting, Healing, Repositioning). Packets: the client sends
+  `/autohunt sync` and `/autohunt config <base64 JSON>`; the server answers `AHC<base64 JSON>`
+  (settings + spell list) and `AHS<state>,<base64 detail>`, only to clients that asked with
+  `sync`, so the desktop client never sees them.
 
 **Phase 2, second part (windows and items):**
 - **Equipment** (`WNF11`): the paper doll in the "Equip" tab. Double-click takes an item

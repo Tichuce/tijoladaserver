@@ -77,7 +77,11 @@
 
         <section id="party" class="card" hidden aria-label="Party"></section>
 
-        <button id="autohunt" type="button" data-state="off" title="Click: start / pause · Right-click: stop">Auto-hunt OFF</button>
+        <div class="autohunt-row">
+          <button id="autohunt" type="button" data-state="off" title="Click: start / pause · Right-click: stop">Auto-hunt OFF</button>
+          <button id="autohunt-settings" type="button" title="Auto-Hunt settings: attack, buff and healing spells">⚙</button>
+        </div>
+        <div id="autohunt-status" hidden></div>
 
         <div id="buffs" aria-label="Active buffs"></div>
 

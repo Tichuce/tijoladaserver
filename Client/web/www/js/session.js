@@ -9,6 +9,7 @@
 // The browser never decides game state; it predicts a step for smoothness exactly like the
 // desktop client and accepts whatever the server sends back.
 import { AutoHuntTracker } from "./autohunt.js";
+import { configCommand, parseConfig } from "./autohuntconfig.js";
 import { OneShot } from "./character.js";
 import { Connection } from "./connection.js";
 import { ChatType, ClientPackets, Direction, LINE_CLICK_COUNT, WindowFrame, parsePacket } from "./protocol.js";
@@ -48,6 +49,9 @@ export class Session {
         this.spells = new Array(SPELL_SLOTS).fill(null);
         this.buffs = [];
         this.autoHunt = new AutoHuntTracker();
+        this.autoHuntConfig = null;
+        this.autoHuntStatus = { state: "off", detail: "" };
+        this.autoHuntSynced = false;
         this.equipment = new Array(EQUIP_SLOTS).fill(null);
         this.windows = new Map();
         /** Party lines by GUD line number (PartyWindow). */
@@ -127,6 +131,8 @@ export class Session {
             case "doneSendingMap":
                 if (this.world)
                     this.setPhase("inGame");
+                if (this.world && !this.autoHuntSynced)
+                    this.syncAutoHunt();
                 break;
             case "mapName":
                 break; // the desktop client ignores it too
@@ -269,6 +275,18 @@ export class Session {
                     this.inventory[p.slot] = p.item;
                     this.events.stateChanged();
                 }
+                break;
+            case "autoHuntConfig": {
+                const config = parseConfig(p.json);
+                if (config) {
+                    this.autoHuntConfig = config;
+                    this.events.stateChanged();
+                }
+                break;
+            }
+            case "autoHuntStatus":
+                this.autoHuntStatus = { state: p.state, detail: p.detail };
+                this.events.stateChanged();
                 break;
             case "spellSlot":
                 if (p.slot >= 0 && p.slot < SPELL_SLOTS) {
@@ -625,6 +643,14 @@ export class Session {
         if (this.world)
             this.connection.send(ClientPackets.command(this.autoHunt.next()));
         this.events.stateChanged();
+    }
+    syncAutoHunt() {
+        this.autoHuntSynced = true;
+        this.connection.send(ClientPackets.command("/autohunt sync"));
+    }
+    saveAutoHuntSettings(settings) {
+        if (this.world)
+            this.connection.send(ClientPackets.command(configCommand(settings)));
     }
     stopAutoHunt() {
         if (this.world)

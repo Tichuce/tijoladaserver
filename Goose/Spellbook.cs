@@ -194,6 +194,8 @@ namespace Goose
             }
         }
 
+        public int Capacity => this.spells.Length;
+
         /**
          * GetSlot, returns spell at slot
          *

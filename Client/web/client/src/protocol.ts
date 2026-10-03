@@ -150,6 +150,8 @@ export type ServerPacket =
   | { type: "emote"; loginId: number; emote: number }
   | { type: "inventorySlot"; slot: number; item: InventoryItem | null }
   | { type: "spellSlot"; slot: number; spell: SpellInfo | null }
+  | { type: "autoHuntConfig"; json: string }
+  | { type: "autoHuntStatus"; state: string; detail: string }
   | { type: "buffSlot"; slot: number; buff: { graphic: number; name: string } | null }
   // Server windows
   | { type: "makeWindow"; window: WindowInfo }
@@ -442,6 +444,8 @@ const PARSERS: Record<string, Parser> = {
     return { type: "logFinish", windowId, requestId, hasMore, currentToken, nextToken };
   },
   LRX: (p) => ({ type: "logError", windowId: p.int(), requestId: p.int(), message: decodeText(p.left() > 0 ? p.string() : "") }),
+  AHC: (p) => ({ type: "autoHuntConfig", json: decodeText(p.remaining()) }),
+  AHS: (p) => ({ type: "autoHuntStatus", state: p.string(), detail: decodeText(p.left() > 0 ? p.remaining() : "") }),
   BUF: (p) => {
     const slot = p.int() - 1;
     if (p.left() === 0) return { type: "buffSlot", slot, buff: null };

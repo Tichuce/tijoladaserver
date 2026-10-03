@@ -9,6 +9,28 @@ namespace Goose.Commands
             var player = ctx.Player;
             string arg = mode.Length > 0 ? mode[0].ToLowerInvariant() : "";
 
+            if (arg == "sync")
+            {
+                player.AutoHuntSynced = true;
+                SendConfig(player, world);
+                world.Send(player, P.AutoHuntStatus(player.AutoHuntState, player.AutoHuntDetail));
+                return;
+            }
+
+            if (arg == "config")
+            {
+                SaveConfig(ctx, mode.Length > 1 ? mode[1] : "");
+                return;
+            }
+
+            if (arg == "reset")
+            {
+                AutoHuntSettings.Reset(player);
+                SendConfig(player, world);
+                ctx.Send("Auto-hunt settings reset.");
+                return;
+            }
+
             if (arg == "pause")
             {
                 if (!player.IsAutoHunting)
@@ -58,5 +80,19 @@ namespace Goose.Commands
             else
                 player.StartAutoHunt(world);
         }
+
+        private static void SaveConfig(CommandContext ctx, string encoded)
+        {
+            if (!AutoHuntSettings.TryApply(ctx.Player, ctx.World, encoded))
+            {
+                ctx.Send("Auto-hunt settings were not saved: invalid data.");
+                return;
+            }
+
+            SendConfig(ctx.Player, ctx.World);
+        }
+
+        private static void SendConfig(Player player, GameWorld world)
+            => world.Send(player, P.AutoHuntConfig(AutoHuntSettings.ConfigJson(player, world)));
     }
 }

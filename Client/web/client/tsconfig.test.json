@@ -11,6 +11,7 @@
     "src/protocol.ts",
     "src/assets.ts",
     "src/autohunt.ts",
+    "src/autohuntconfig.ts",
     "src/skin.ts",
     "src/tooltip.ts",
     "src/logviewer.ts",

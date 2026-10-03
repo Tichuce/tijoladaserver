@@ -1,6 +1,8 @@
 // Side panels: vitals, auto-hunt button, buffs, inventory, spellbook and the 1-0 hotkey
 // bar. Plain DOM, drawn from Session state; every action goes to the server through the
 // existing packets (USE, CAST, /autohunt). Nothing here decides game state.
+import { statusLabel } from "./autohuntconfig.js";
+import { AutoHuntView } from "./autohuntview.js";
 import { dropTarget, setDrag } from "./dnd.js";
 import { EQUIP_SLOTS, INVENTORY_SLOTS, SPELL_SLOTS } from "./session.js";
 import { CHAR_H, CHAR_W, FONT_SHEET, coords, drawGameText, objectPosition } from "./skin.js";
@@ -29,6 +31,7 @@ export class Panels {
         this.hotbar = $("hotbar");
         this.buffRow = $("buffs");
         this.autoHuntButton = $("autohunt");
+        this.autoHuntStatus = $("autohunt-status");
         this.equipDoll = $("equipment");
         this.partyBox = $("party");
         this.classic = false;
@@ -61,16 +64,36 @@ export class Panels {
             const free = this.session.inventory.findIndex((item) => item === null);
             this.session.moveItem(payload.place, { kind: "inventory", slot: free >= 0 ? free : 0 });
         });
+        this.autoHuntView = new AutoHuntView({
+            save: (settings) => this.session?.saveAutoHuntSettings(settings),
+            refresh: () => this.session?.syncAutoHunt(),
+            toggle: () => this.session?.toggleAutoHunt(),
+            stop: () => this.session?.stopAutoHunt(),
+            close: () => { this.autoHuntView.root.hidden = true; },
+            icon: (graphic) => this.icon(graphic, null),
+        });
+        $("autohunt-settings").addEventListener("click", () => {
+            if (this.autoHuntView.isOpen)
+                this.autoHuntView.root.hidden = true;
+            else {
+                this.autoHuntView.open();
+                this.dirty = true;
+            }
+        });
         this.autoHuntButton.addEventListener("click", () => this.session?.toggleAutoHunt());
         this.autoHuntButton.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
             this.session?.stopAutoHunt();
         });
         // Icons appear as their sheets arrive.
-        assets.onSheetLoaded(() => { this.dirty = true; });
+        assets.onSheetLoaded(() => {
+            this.dirty = true;
+            this.autoHuntView.refreshIcons();
+        });
     }
     attach(session, characterName, realm) {
         this.session = session;
+        this.autoHuntView.reset();
         this.hotkeyKey = `aspereta.hotkeys.${realm}.${characterName.toLowerCase()}`;
         this.hotkeys = this.loadHotkeys();
         this.dirty = true;
@@ -87,6 +110,13 @@ export class Panels {
     useWindowLayer(layer, windows) {
         this.layer = layer;
         this.windows = windows;
+        const view = this.autoHuntView.root;
+        if (!view.parentElement) {
+            view.style.left = "16px";
+            view.style.top = "16px";
+            layer.appendChild(view);
+            draggable(view, this.autoHuntView.handle);
+        }
     }
     setLook(skin, classic) {
         this.classic = classic && !!skin;
@@ -173,6 +203,12 @@ export class Panels {
         this.autoHuntButton.dataset.state = state;
         this.autoHuntButton.classList.toggle("pending", !!ah?.pending);
         this.autoHuntButton.textContent = `Auto-hunt ${state.toUpperCase()}`;
+        const live = s?.autoHuntStatus ?? { state: "off", detail: "" };
+        this.autoHuntStatus.hidden = state === "off" || !s?.autoHuntConfig;
+        this.autoHuntStatus.dataset.state = live.state;
+        this.autoHuntStatus.textContent = live.detail ? `${statusLabel(live.state)} · ${live.detail}` : statusLabel(live.state);
+        if (this.autoHuntView.isOpen)
+            this.autoHuntView.update(s?.autoHuntConfig ?? null, live, state);
         // Party: shown while in a group; clicking a member picks them while targeting a spell.
         const members = (s?.party ?? []).filter((m) => !!m);
         this.partyBox.hidden = members.length === 0;

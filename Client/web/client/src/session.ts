@@ -11,6 +11,7 @@
 
 import { Assets } from "./assets.js";
 import { AutoHuntTracker } from "./autohunt.js";
+import { AutoHuntConfig, AutoHuntSettings, configCommand, parseConfig } from "./autohuntconfig.js";
 import { OneShot } from "./character.js";
 import { Connection } from "./connection.js";
 import { ChatType, ClientPackets, Direction, InventoryItem, LINE_CLICK_COUNT, ServerPacket, SpellInfo, StatusInfo, WindowFrame, WindowInfo, WindowLine, parsePacket } from "./protocol.js";
@@ -93,6 +94,9 @@ export class Session {
   readonly spells: Array<SpellInfo | null> = new Array(SPELL_SLOTS).fill(null);
   readonly buffs: Array<{ graphic: number; name: string } | null> = [];
   readonly autoHunt = new AutoHuntTracker();
+  autoHuntConfig: AutoHuntConfig | null = null;
+  autoHuntStatus = { state: "off", detail: "" };
+  private autoHuntSynced = false;
   readonly equipment: Array<WindowLine | null> = new Array(EQUIP_SLOTS).fill(null);
   readonly windows = new Map<number, GameWindow>();
   /** Party lines by GUD line number (PartyWindow). */
@@ -181,6 +185,7 @@ export class Session {
 
       case "doneSendingMap":
         if (this.world) this.setPhase("inGame");
+        if (this.world && !this.autoHuntSynced) this.syncAutoHunt();
         break;
 
       case "mapName":
@@ -338,6 +343,20 @@ export class Session {
           this.inventory[p.slot] = p.item;
           this.events.stateChanged();
         }
+        break;
+
+      case "autoHuntConfig": {
+        const config = parseConfig(p.json);
+        if (config) {
+          this.autoHuntConfig = config;
+          this.events.stateChanged();
+        }
+        break;
+      }
+
+      case "autoHuntStatus":
+        this.autoHuntStatus = { state: p.state, detail: p.detail };
+        this.events.stateChanged();
         break;
 
       case "spellSlot":
@@ -686,6 +705,15 @@ export class Session {
   toggleAutoHunt(): void {
     if (this.world) this.connection.send(ClientPackets.command(this.autoHunt.next()));
     this.events.stateChanged();
+  }
+
+  syncAutoHunt(): void {
+    this.autoHuntSynced = true;
+    this.connection.send(ClientPackets.command("/autohunt sync"));
+  }
+
+  saveAutoHuntSettings(settings: AutoHuntSettings): void {
+    if (this.world) this.connection.send(ClientPackets.command(configCommand(settings)));
   }
 
   stopAutoHunt(): void {

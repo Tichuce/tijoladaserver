@@ -17,7 +17,7 @@ namespace Goose.Events
                 return;
             }
 
-            if (!player.AutoHuntPaused && !IsHeld(player)) Act(player, world);
+            if (!player.AutoHuntPaused && !IsStunned(player)) Act(player, world, IsRooted(player));
 
             this.Ticks = world.TimeNow + Math.Max(1, world.Settings.AutoHuntStepMilliseconds) * world.TimerFrequency / 1000;
             world.EventHandler.AddEvent(this);
@@ -41,15 +41,19 @@ namespace Goose.Events
             return null;
         }
 
-        private static bool IsHeld(Player player)
-        {
-            return player.Buffs.Any(b =>
-                b.SpellEffect.EffectType == SpellEffect.EffectTypes.Stun ||
-                b.SpellEffect.EffectType == SpellEffect.EffectTypes.Root);
-        }
+        private static bool IsStunned(Player player)
+            => player.Buffs.Any(b => b.SpellEffect.EffectType == SpellEffect.EffectTypes.Stun);
 
-        private static void Act(Player player, GameWorld world)
+        private static bool IsRooted(Player player)
+            => player.Buffs.Any(b => b.SpellEffect.EffectType == SpellEffect.EffectTypes.Root);
+
+        private static void Act(Player player, GameWorld world, bool rooted)
         {
+            var settings = AutoHuntSettings.For(player);
+            var caster = new AutoHuntCaster(player, world);
+
+            if (caster.TryHeal(settings) || caster.TryBuff(settings)) return;
+
             NPC? target = player.AutoHuntTarget;
             if (target is not null && !IsHuntable(player, target, world))
             {
@@ -67,8 +71,28 @@ namespace Goose.Events
             if (target is null)
             {
                 player.AutoHuntIgnored.Clear();
-                if (player.MapX != player.AutoHuntOriginX || player.MapY != player.AutoHuntOriginY)
+                if (!rooted && (player.MapX != player.AutoHuntOriginX || player.MapY != player.AutoHuntOriginY))
+                {
                     Step(player, player.AutoHuntOriginX, player.AutoHuntOriginY, world);
+                    player.SetAutoHuntStatus(world, "moving", "Returning");
+                }
+                else
+                {
+                    player.SetAutoHuntStatus(world, "waiting", "No monsters");
+                }
+                return;
+            }
+
+            if (caster.TryAttack(settings, target)) return;
+            if (rooted)
+            {
+                player.SetAutoHuntStatus(world, "waiting", "Rooted");
+                return;
+            }
+
+            if (!settings.Melee)
+            {
+                KeepDistance(player, target, settings, world);
                 return;
             }
 
@@ -86,12 +110,19 @@ namespace Goose.Events
                 // the same ATT packet or the character never plays its attack animation.
                 if (player.LastAttack != lastAttack)
                     world.Send(player, P.Attack(player));
+                player.SetAutoHuntStatus(world, "active", target.Name);
                 return;
             }
 
+            Chase(player, target, world);
+        }
+
+        private static void Chase(Player player, NPC target, GameWorld world)
+        {
             player.AutoHuntChaseSteps++;
             bool moved = Step(player, target.MapX, target.MapY, world);
             player.AutoHuntFailedSteps = moved ? 0 : player.AutoHuntFailedSteps + 1;
+            player.SetAutoHuntStatus(world, "moving", target.Name);
 
             if (player.AutoHuntFailedSteps >= MaxFailedSteps ||
                 player.AutoHuntChaseSteps > world.Settings.AutoHuntRadius * 4)
@@ -101,7 +132,72 @@ namespace Goose.Events
             }
         }
 
-        private static bool IsHuntable(Player player, NPC npc, GameWorld world)
+        private static void KeepDistance(Player player, NPC target, AutoHuntSettings settings, GameWorld world)
+        {
+            var threats = Threats(player).ToList();
+            int nearest = threats.Count == 0 ? int.MaxValue : threats.Min(n => AutoHuntSpells.Distance(player, n));
+
+            if (settings.MinDistance > 0 && nearest < settings.MinDistance)
+            {
+                if (StepAway(player, threats, nearest, world))
+                {
+                    player.SetAutoHuntStatus(world, "repositioning", target.Name);
+                    return;
+                }
+            }
+            else if (AutoHuntSpells.Distance(player, target) > settings.KeepDistance)
+            {
+                Chase(player, target, world);
+                return;
+            }
+
+            player.AutoHuntChaseSteps = 0;
+            player.SetAutoHuntStatus(world, "waiting", target.Name);
+        }
+
+        private static IEnumerable<NPC> Threats(Player player)
+        {
+            return player.Map.GetNPCsInRange(player).Where(n =>
+                n.State == NPC.States.Alive &&
+                n.NPCType == NPCTemplate.Types.Monster &&
+                n.CanBeKilled);
+        }
+
+        private static bool StepAway(Player player, List<NPC> threats, int nearest, GameWorld world)
+        {
+            int radius = world.Settings.AutoHuntRadius;
+            int bestNearest = nearest;
+            int bestTotal = threats.Sum(n => AutoHuntSpells.Distance(player, n));
+            Direction? best = null;
+
+            foreach (Direction direction in new[] { Direction.Up, Direction.Right, Direction.Down, Direction.Left })
+            {
+                (int dx, int dy) = AutoHuntSpells.Step(direction);
+                int x = player.MapX + dx;
+                int y = player.MapY + dy;
+                if (Math.Max(Math.Abs(x - player.AutoHuntOriginX), Math.Abs(y - player.AutoHuntOriginY)) > radius) continue;
+                if (player.Map.GetTile(x, y) is WarpTile || !player.CanMoveTo(x, y)) continue;
+
+                int near = threats.Min(n => Math.Max(Math.Abs(n.MapX - x), Math.Abs(n.MapY - y)));
+                int total = threats.Sum(n => Math.Max(Math.Abs(n.MapX - x), Math.Abs(n.MapY - y)));
+                if (near > bestNearest || (near == bestNearest && total > bestTotal))
+                {
+                    bestNearest = near;
+                    bestTotal = total;
+                    best = direction;
+                }
+            }
+
+            if (best is not Direction chosen) return false;
+
+            (int sx, int sy) = AutoHuntSpells.Step(chosen);
+            player.MoveTo(world, player.MapX + sx, player.MapY + sy);
+            player.Facing = chosen;
+            world.Send(player, P.SetYourPosition(player));
+            return true;
+        }
+
+        public static bool IsHuntable(Player player, NPC npc, GameWorld world)
         {
             return npc.State == NPC.States.Alive &&
                 npc.Map == player.Map &&
@@ -143,7 +239,7 @@ namespace Goose.Events
             return true;
         }
 
-        private static Direction DirectionTo(Player player, ICharacter target)
+        public static Direction DirectionTo(Player player, ICharacter target)
         {
             if (target.MapY < player.MapY) return Direction.Up;
             if (target.MapY > player.MapY) return Direction.Down;
@@ -151,7 +247,7 @@ namespace Goose.Events
             return Direction.Right;
         }
 
-        private static void Face(Player player, Direction direction, GameWorld world)
+        public static void Face(Player player, Direction direction, GameWorld world)
         {
             if (player.Facing == direction) return;
 

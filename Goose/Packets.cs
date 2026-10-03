@@ -711,6 +711,11 @@ namespace Goose
             return "PBC" + player.LoginID;
         };
 
+        public static Func<string, string> AutoHuntConfig = (json) => "AHC" + ProtocolTextCodec.EncodeText(json);
+
+        public static Func<string, string, string> AutoHuntStatus = (state, detail) =>
+            "AHS" + state + "," + ProtocolTextCodec.EncodeText(detail);
+
         public static Func<Window, string> MakeWindow = (window) =>
         {
             return "MKW" +

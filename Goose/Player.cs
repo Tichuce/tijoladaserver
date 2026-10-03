@@ -2604,6 +2604,21 @@ namespace Goose
         // Paused keeps the session alive but idle: no fighting or walking, and manual movement,
         // low HP or vendors don't end it. Map changes and logout still do.
         public bool AutoHuntPaused { get; private set; }
+        public bool AutoHuntSynced { get; set; }
+        public AutoHuntSettings? AutoHuntSettingsCache { get; set; }
+        public Dictionary<int, long> AutoHuntBackoff { get; } = [];
+        public string AutoHuntState { get; private set; } = "off";
+        public string AutoHuntDetail { get; private set; } = "";
+
+        public void SetAutoHuntStatus(GameWorld world, string state, string detail = "")
+        {
+            if (state == this.AutoHuntState && detail == this.AutoHuntDetail) return;
+
+            this.AutoHuntState = state;
+            this.AutoHuntDetail = detail;
+            if (this.AutoHuntSynced)
+                world.Send(this, P.AutoHuntStatus(state, detail));
+        }
 
         public void StartAutoHunt(GameWorld world)
         {
@@ -2616,6 +2631,7 @@ namespace Goose
             this.AutoHuntFailedSteps = 0;
             this.AutoHuntChaseSteps = 0;
             this.AutoHuntIgnored.Clear();
+            this.AutoHuntBackoff.Clear();
             this.AutoHuntPaused = false;
 
             var ev = new AutoHuntEvent { Player = this };
@@ -2623,6 +2639,7 @@ namespace Goose
             world.EventHandler.AddEvent(ev);
 
             world.Send(this, P.ServerMessage("Auto-hunt started. Moving or typing /autohunt off stops it."));
+            this.SetAutoHuntStatus(world, "active");
         }
 
         public void StopAutoHunt(GameWorld world, string? reason)
@@ -2636,6 +2653,7 @@ namespace Goose
 
             if (reason is not null)
                 world.Send(this, P.ServerMessage("Auto-hunt stopped: " + reason));
+            this.SetAutoHuntStatus(world, "off");
         }
 
         public void PauseAutoHunt(GameWorld world)
@@ -2646,6 +2664,7 @@ namespace Goose
             this.AutoHuntTarget = null;
 
             world.Send(this, P.ServerMessage("Auto-hunt paused. /autohunt on resumes it, /autohunt off stops it."));
+            this.SetAutoHuntStatus(world, "paused");
         }
 
         // Resumes around the player's current spot, since they may have walked while paused.
@@ -2662,6 +2681,7 @@ namespace Goose
             this.AutoHuntIgnored.Clear();
 
             world.Send(this, P.ServerMessage("Auto-hunt resumed."));
+            this.SetAutoHuntStatus(world, "active");
         }
 
         public bool IsMounted(GameWorld world)
