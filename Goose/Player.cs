@@ -2607,6 +2607,8 @@ namespace Goose
         public bool AutoHuntSynced { get; set; }
         public AutoHuntSettings? AutoHuntSettingsCache { get; set; }
         public Dictionary<int, long> AutoHuntBackoff { get; } = [];
+        public Dictionary<NPC, long> AutoHuntTaunted { get; } = [];
+        public int AutoHuntWaitTicks { get; set; }
         public string AutoHuntState { get; private set; } = "off";
         public string AutoHuntDetail { get; private set; } = "";
 
@@ -2632,6 +2634,8 @@ namespace Goose
             this.AutoHuntChaseSteps = 0;
             this.AutoHuntIgnored.Clear();
             this.AutoHuntBackoff.Clear();
+            this.AutoHuntTaunted.Clear();
+            this.AutoHuntWaitTicks = 0;
             this.AutoHuntPaused = false;
 
             var ev = new AutoHuntEvent { Player = this };
@@ -2649,6 +2653,7 @@ namespace Goose
             this.AutoHuntEvent = null;
             this.AutoHuntTarget = null;
             this.AutoHuntIgnored.Clear();
+            this.AutoHuntTaunted.Clear();
             this.AutoHuntPaused = false;
 
             if (reason is not null)

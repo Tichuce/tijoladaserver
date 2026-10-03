@@ -582,3 +582,21 @@ body.classic .tabs button[data-tab="equipment"], body.classic .tabs button[data-
 .auto-hunt footer .ah-saved { flex: 1; color: #a99068; }
 .auto-hunt footer button { background: #4a3818; color: #f8d000; border: 1px solid #8a6a2c; }
 .auto-hunt footer button:hover { background: #5a4320; }
+.auto-hunt .ah-tabs button { min-width: 0; }
+.auto-hunt .ah-mt-head { display: flex; gap: 14px; padding: 2px 2px 0; }
+.auto-hunt .ah-mt-head .ah-check { font-weight: bold; color: #f0e2bd; }
+.auto-hunt .ah-slot-row { display: grid; grid-template-columns: 40px 1fr 1fr; gap: 4px; align-items: center; margin-top: 3px; }
+.auto-hunt .ah-slot-label { color: #c9b48a; }
+.auto-hunt .ah-slot { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.auto-hunt .ah-slot .ah-icon { width: 22px; height: 22px; }
+.auto-hunt .ah-slot select { flex: 1; min-width: 0; width: 100%; padding: 2px; background: #120d07; color: #eadfc4; border: 1px solid #5a4320; border-radius: 2px; font: 10px Verdana, sans-serif; }
+.auto-hunt .ah-slots small, .auto-hunt .ah-mobs small.ah-note { display: block; margin-top: 2px; font-size: 9px; }
+.auto-hunt fieldset[hidden] { display: none; }
+.auto-hunt .ah-mob-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+.auto-hunt .ah-mob { display: flex; align-items: center; gap: 6px; padding: 2px 4px; background: #120d07; border: 1px solid #3d2e17; border-radius: 3px; }
+.auto-hunt .ah-mob[data-mode="priority"] { border-color: #d8a73c; }
+.auto-hunt .ah-mob[data-mode="ignore"] { opacity: 0.55; }
+.auto-hunt .ah-portrait { width: 32px; height: 32px; flex: none; image-rendering: pixelated; background: #000; border: 1px solid #3d2e17; }
+.auto-hunt .ah-mode { min-width: 62px; padding: 2px 6px; background: #2b2012; color: #c9b48a; border: 1px solid #5a4320; border-radius: 2px; font: 10px Verdana, sans-serif; }
+.auto-hunt .ah-mode[data-mode="priority"] { background: #5a4320; color: #f8d000; border-color: #d8a73c; }
+.auto-hunt .ah-mode[data-mode="ignore"] { background: #3a1610; color: #ff8a6a; border-color: #7a2c1e; }

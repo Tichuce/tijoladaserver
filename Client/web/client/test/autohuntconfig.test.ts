@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodeText, encodeText, parsePacket } from "../src/protocol.js";
 import {
-  AutoHuntConfig, AutoHuntSpell, addEntry, candidates, configCommand, describeSpell, emptySettings, moveEntry,
-  normalizeSettings, parseConfig, removeEntry, statusLabel,
+  AutoHuntConfig, AutoHuntSpell, addEntry, candidates, configCommand, describeSpell, emptySettings, monsterMode, moveEntry,
+  nextMonsterMode, normalizeSettings, normalizeTaunt, parseConfig, removeEntry, setMonsterMode, setTauntSlot, statusLabel, tauntOptions,
 } from "../src/autohuntconfig.js";
 
 function spell(id: number, cat: AutoHuntSpell["cat"], extra: Partial<AutoHuntSpell> = {}): AutoHuntSpell {
@@ -20,7 +20,10 @@ function config(): AutoHuntConfig {
       spell(107, "heal", { tgt: 2 }),
       spell(2, "buff", { dur: 600, aether: 5000 }),
       spell(4, "taunt", { taunt: 1000 }),
+      spell(75, "taunt", { taunt: 10000 }),
+      spell(22, "taunt", { tgt: 1, area: 5, size: 4, taunt: 3000 }),
     ],
+    mobs: [{ tid: 7, name: "Bat", lvl: 3, n: 4, body: 120, state: 1 }],
     radius: 12,
     minhp: 5,
     step: 350,
@@ -103,4 +106,50 @@ test("spell descriptions and status labels", () => {
   assert.equal(describeSpell(spell(107, "heal", { tgt: 2, mp: 100, aether: 0 })), "Group · 100 MP");
   assert.equal(describeSpell(spell(2, "buff", { mp: 20, aether: 5000, dur: 600 })), "Single target · 20 MP · 5s cooldown · lasts 10m");
   assert.equal(statusLabel("repositioning"), "Repositioning");
+});
+
+test("taunt settings normalize with defaults and clamps", () => {
+  const t = normalizeTaunt({ on: true, st: [4, 4, 75, 9], want: 9, cap: 2, min: 20, max: 5, re: 999 });
+  assert.equal(t.on, true);
+  assert.deepEqual(t.st, [4, 75]);
+  assert.equal(t.cap, 9);
+  assert.equal(t.min, 5);
+  assert.equal(t.re, 120);
+  assert.equal(t.pull, true);
+  assert.deepEqual(normalizeTaunt(undefined), normalizeSettings(undefined).mt);
+});
+
+test("taunt slots split single and area taunts and swap duplicates", () => {
+  const c = config();
+  assert.deepEqual(tauntOptions(c, false).map((s) => s.id), [4, 75]);
+  assert.deepEqual(tauntOptions(c, true).map((s) => s.id), [22]);
+  setTauntSlot(c.cfg, false, 0, 4);
+  setTauntSlot(c.cfg, false, 1, 75);
+  assert.deepEqual(c.cfg.mt.st, [4, 75]);
+  setTauntSlot(c.cfg, false, 1, 4);
+  assert.deepEqual(c.cfg.mt.st, [75, 4]);
+  setTauntSlot(c.cfg, false, 0, 0);
+  assert.deepEqual(c.cfg.mt.st, [4]);
+  setTauntSlot(c.cfg, true, 0, 22);
+  assert.deepEqual(c.cfg.mt.area, [22]);
+});
+
+test("monster modes cycle and stay exclusive", () => {
+  const s = emptySettings();
+  assert.equal(monsterMode(s, 7), "normal");
+  setMonsterMode(s, 7, nextMonsterMode("normal"));
+  assert.deepEqual([s.pri, s.ign], [[7], []]);
+  setMonsterMode(s, 7, nextMonsterMode(monsterMode(s, 7)));
+  assert.deepEqual([s.pri, s.ign], [[], [7]]);
+  assert.equal(monsterMode(s, 7), "ignore");
+  setMonsterMode(s, 7, nextMonsterMode(monsterMode(s, 7)));
+  assert.deepEqual([s.pri, s.ign], [[], []]);
+  assert.deepEqual(normalizeSettings({ pri: [7, 8], ign: [8] }).pri, [7]);
+});
+
+test("parseConfig keeps the monster list", () => {
+  const parsed = parseConfig(JSON.stringify({ cfg: {}, spells: [], mobs: [{ tid: 7, name: "Bat", lvl: 3, n: 2, body: 120, state: 1 }, { bad: 1 }] }));
+  assert.ok(parsed);
+  assert.equal(parsed.mobs.length, 1);
+  assert.equal(parsed.cfg.mt.on, false);
 });

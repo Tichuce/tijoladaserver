@@ -49,7 +49,7 @@ The desktop client keeps working at the same time on port 2006.
 - **Auto-hunt button:** ON/PAUSED/OFF, driven by the server's own messages. Click
   sends `/autohunt on` or `/autohunt pause`; right-click sends `/autohunt off`. Auto-hunt
   steps are walked smoothly, like the desktop client.
-- **Auto-Hunt settings (⚙ next to the button):** a window with three tabs, saved on the
+- **Auto-Hunt settings (⚙ next to the button):** a window with four tabs, saved on the
   server per character (`player_properties`, key `autohunt`):
   - **AS (attack spells):** priority list, per spell on/off, minimum MP %, range in tiles and,
     for area spells, the minimum number of monsters it must hit. A "Distance" box chooses
@@ -58,9 +58,18 @@ The desktop client keeps working at the same time on port 2006.
     buff ends (or only once it is gone). Active buffs are not recast.
   - **HS (healing spells):** heal below HP %, minimum MP %, range, and for group or area
     heals the minimum number of injured allies (one ally only when badly hurt).
+  - **MT (monster taunt):** Auto-Taunt on/off, two single-target and two area taunt slots
+    (slot 1 first, slot 2 as fallback) and **Progressive Pull**: the server taunts one
+    untaunted monster at a time (walking into taunt range when needed), uses an area taunt
+    once enough monsters are close, waits for pulled monsters to arrive, takes back monsters
+    that turned to a group member, and stops pulling at the desired count (never above the
+    maximum). Settings: pull radius, desired/maximum monsters, minimum distance and taunt
+    range, area-taunt minimum, re-taunt delay. The "Monsters on this map" list (with their
+    sprites) marks monsters as Priority or Ignore for the whole auto-hunt; an ignored monster
+    is still fought while it attacks you.
   The server classifies every spell from its own data (the same data as the wiki) and sends
   only spells you know. A status line under the button shows what auto-hunt is doing
-  (Active, Waiting, Moving, Casting, Healing, Repositioning). Packets: the client sends
+  (Active, Waiting, Moving, Casting, Pulling, Healing, Repositioning). Packets: the client sends
   `/autohunt sync` and `/autohunt config <base64 JSON>`; the server answers `AHC<base64 JSON>`
   (settings + spell list) and `AHS<state>,<base64 detail>`, only to clients that asked with
   `sync`, so the desktop client never sees them.

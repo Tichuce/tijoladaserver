@@ -76,12 +76,12 @@ public class AutoHuntSpellTests : IDisposable
         return p;
     }
 
-    private NPC SpawnNpc(int x, int y)
+    private NPC SpawnNpc(int x, int y, int templateId = 1, string name = "Rat")
     {
         var template = new NPCTemplate
         {
-            NPCTemplateID = 1,
-            Name = "Rat",
+            NPCTemplateID = templateId,
+            Name = name,
             Level = 50,
             ClassID = ClassId,
             NPCType = NPCTemplate.Types.Monster,
@@ -474,5 +474,232 @@ public class AutoHuntSpellTests : IDisposable
         Tick(player);
 
         Assert.Equal((11, 10), (player.MapX, player.MapY));
+    }
+
+    private static Spell Taunt(int id = 4) => NewSpell(id, Spell.SpellTargets.Target, SpellEffect.EffectTypes.Formula,
+        SpellEffect.SpellEffected.NPC, hp: "-1", mp: 10, aether: 5000, taunt: 1000);
+
+    private static Spell AreaTaunt(int id = 22, int size = 2) => NewSpell(id, Spell.SpellTargets.Self, SpellEffect.EffectTypes.Formula,
+        SpellEffect.SpellEffected.NPC, hp: "-1", area: SpellEffect.TargetTypes.Area, size: size, mp: 40, aether: 10000, taunt: 3000);
+
+    private static AutoHuntSettings Tank(AutoHuntTauntSettings mt)
+    {
+        mt.Enabled = true;
+        return new AutoHuntSettings { Taunt = mt };
+    }
+
+    [Fact]
+    public void Validate_TauntSlotsKeepOnlyTheRightKindOfTaunt()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, Taunt());
+        Learn(player, AreaTaunt());
+        Learn(player, Strike());
+
+        var settings = new AutoHuntSettings
+        {
+            Taunt = new AutoHuntTauntSettings { Single = [22, 4, 5, 4], Area = [4, 22], Desired = 9, Maximum = 3, MinDistance = 9, MaxDistance = 4 },
+            PriorityMonsters = [7, 8, 8],
+            IgnoredMonsters = [8],
+        };
+        settings.Validate(player, world);
+
+        Assert.Equal(new[] { 4 }, settings.Taunt.Single);
+        Assert.Equal(new[] { 22 }, settings.Taunt.Area);
+        Assert.Equal(9, settings.Taunt.Maximum);
+        Assert.Equal(4, settings.Taunt.MinDistance);
+        Assert.Equal(new[] { 7 }, settings.PriorityMonsters);
+        Assert.Equal(new[] { 8 }, settings.IgnoredMonsters);
+    }
+
+    [Fact]
+    public void Pull_TauntsAnUntauntedMonsterFromRangeWithoutWalking()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, Taunt());
+        var npc = SpawnNpc(14, 10);
+        Configure(player, Tank(new AutoHuntTauntSettings { Single = [4], MinDistance = 0, MaxDistance = 6 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Same(player, npc.AggroTarget);
+        Assert.Equal(90, player.CurrentMP);
+        Assert.Equal((10, 10), (player.MapX, player.MapY));
+        Assert.Equal("pulling", player.AutoHuntState);
+    }
+
+    [Fact]
+    public void Pull_ApproachesAMonsterBeyondTauntRange()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, Taunt());
+        var npc = SpawnNpc(19, 10);
+        Configure(player, Tank(new AutoHuntTauntSettings { Single = [4], MaxDistance = 4, Radius = 12 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Equal((11, 10), (player.MapX, player.MapY));
+        Assert.Null(npc.AggroTarget);
+        Assert.Equal("Approaching Rat", player.AutoHuntDetail);
+    }
+
+    [Fact]
+    public void Pull_StopsAtTheDesiredCount()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, Taunt());
+        var first = SpawnNpc(13, 10);
+        var second = SpawnNpc(10, 14);
+        Configure(player, Tank(new AutoHuntTauntSettings { Single = [4], Desired = 1, MinDistance = 0 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+        player.Spellbook.SetSlotLastCast(1, long.MinValue >> 1);
+        Tick(player);
+
+        Assert.Same(player, first.AggroTarget);
+        Assert.Null(second.AggroTarget);
+    }
+
+    [Fact]
+    public void Pull_SkipsMonstersCloserThanTheMinimumDistance()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, Taunt());
+        var near = SpawnNpc(11, 11);
+        var far = SpawnNpc(14, 10);
+        Configure(player, Tank(new AutoHuntTauntSettings { Single = [4], MinDistance = 3, Desired = 4 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Null(near.AggroTarget);
+        Assert.Same(player, far.AggroTarget);
+    }
+
+    [Fact]
+    public void AreaTaunt_NeedsTheMinimumNumberOfMonsters()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, AreaTaunt());
+        var a = SpawnNpc(12, 10);
+        Configure(player, Tank(new AutoHuntTauntSettings { Area = [22], AreaMinimum = 2 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+        Assert.Equal(100, player.CurrentMP);
+
+        var b = SpawnNpc(10, 12);
+        Tick(player);
+
+        Assert.Equal(60, player.CurrentMP);
+        Assert.Same(player, a.AggroTarget);
+        Assert.Same(player, b.AggroTarget);
+    }
+
+    [Fact]
+    public void AreaTaunt_RespectsTheMaximumMonsterCount()
+    {
+        var player = PlacePlayer(10, 10);
+        Learn(player, AreaTaunt());
+        SpawnNpc(12, 10);
+        SpawnNpc(10, 12);
+        SpawnNpc(8, 10);
+        Configure(player, Tank(new AutoHuntTauntSettings { Area = [22], AreaMinimum = 2, Desired = 2, Maximum = 2 }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Equal(100, player.CurrentMP);
+    }
+
+    [Fact]
+    public void Rescue_TauntsAMonsterOffAGroupMember()
+    {
+        var tank = PlacePlayer(10, 10);
+        var mage = PlacePlayer(15, 10);
+        var group = new Group();
+        group.Players.Add(tank);
+        group.Players.Add(mage);
+        tank.Group = group;
+        mage.Group = group;
+        Learn(tank, Taunt());
+        var npc = SpawnNpc(14, 10);
+        npc.AddAggro(mage, 500, world);
+        Configure(tank, Tank(new AutoHuntTauntSettings { Single = [4], Pull = false }));
+        tank.StartAutoHunt(world);
+
+        Tick(tank);
+
+        Assert.Same(tank, npc.AggroTarget);
+        Assert.Contains("rescue", tank.AutoHuntDetail);
+    }
+
+    [Fact]
+    public void Ignored_MonstersAreNotHuntedUnlessTheyAttack()
+    {
+        var player = PlacePlayer(10, 10);
+        var skipped = SpawnNpc(12, 10, templateId: 7, name: "Bat");
+        var hunted = SpawnNpc(10, 15, templateId: 8, name: "Rat");
+        Configure(player, new AutoHuntSettings { IgnoredMonsters = [7] });
+        player.StartAutoHunt(world);
+
+        Tick(player);
+        Assert.Same(hunted, player.AutoHuntTarget);
+
+        player.AutoHuntTarget = null;
+        skipped.AddAggro(player, 5, world);
+        Tick(player);
+        Assert.Same(skipped, player.AutoHuntTarget);
+    }
+
+    [Fact]
+    public void Priority_MonstersAreHuntedFirst()
+    {
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(12, 10, templateId: 7, name: "Bat");
+        var wanted = SpawnNpc(10, 16, templateId: 8, name: "Boss");
+        Configure(player, new AutoHuntSettings { PriorityMonsters = [8] });
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Same(wanted, player.AutoHuntTarget);
+    }
+
+    [Fact]
+    public void Pull_WaitsForTauntedMonstersToArrive()
+    {
+        var player = PlacePlayer(10, 10);
+        var npc = SpawnNpc(13, 10);
+        npc.MoveSpeed = 0.4;
+        npc.AddAggro(player, 5, world);
+        Configure(player, Tank(new AutoHuntTauntSettings { Single = [4] }));
+        player.StartAutoHunt(world);
+
+        Tick(player);
+
+        Assert.Equal((10, 10), (player.MapX, player.MapY));
+        Assert.Equal("pulling", player.AutoHuntState);
+    }
+
+    [Fact]
+    public void ConfigJson_ListsMonstersOnTheMap()
+    {
+        var player = PlacePlayer(10, 10);
+        SpawnNpc(12, 10, templateId: 7, name: "Bat");
+        SpawnNpc(13, 10, templateId: 7, name: "Bat");
+        SpawnNpc(14, 10, templateId: 8, name: "Rat");
+
+        using var doc = JsonDocument.Parse(AutoHuntSettings.ConfigJson(player, world));
+        var mobs = doc.RootElement.GetProperty("mobs").EnumerateArray().ToList();
+
+        Assert.Equal(2, mobs.Count);
+        var bat = mobs.Single(m => m.GetProperty("tid").GetInt32() == 7);
+        Assert.Equal("Bat", bat.GetProperty("name").GetString());
+        Assert.Equal(2, bat.GetProperty("n").GetInt32());
+        Assert.False(doc.RootElement.GetProperty("cfg").GetProperty("mt").GetProperty("on").GetBoolean());
     }
 }

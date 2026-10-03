@@ -2,6 +2,8 @@ import { encodeText } from "./protocol.js";
 export const MAX_ENTRIES = 10;
 export const MAX_RANGE = 12;
 export const MAX_DISTANCE = 12;
+export const TAUNT_SLOTS = 2;
+export const MAX_MONSTERS = 30;
 export const LISTS = { atk: "attack", buf: "buff", heal: "heal" };
 export const STATUS_LABELS = {
     off: "Off",
@@ -15,8 +17,11 @@ export const STATUS_LABELS = {
     repositioning: "Repositioning",
 };
 const AREA_NAMES = ["Single target", "Line", "Cross (X)", "Plus (+)", "Random area", "Area", "Cone"];
+export function defaultTaunt() {
+    return { on: false, st: [], area: [], pull: true, rad: 8, want: 4, cap: 6, min: 2, max: 6, amin: 2, re: 8 };
+}
 export function emptySettings() {
-    return { v: 1, atk: [], buf: [], heal: [], min: 0, max: 1, melee: true };
+    return { v: 1, atk: [], buf: [], heal: [], min: 0, max: 1, melee: true, mt: defaultTaunt(), pri: [], ign: [] };
 }
 function clampInt(value, min, max, fallback) {
     const n = typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
@@ -33,6 +38,37 @@ function normalizeEntry(raw) {
         re: clampInt(raw.re, 0, 600, 0),
     };
 }
+function idList(value, max) {
+    if (!Array.isArray(value))
+        return [];
+    const out = [];
+    for (const v of value) {
+        if (typeof v === "number" && Number.isInteger(v) && v > 0 && !out.includes(v))
+            out.push(v);
+        if (out.length >= max)
+            break;
+    }
+    return out;
+}
+export function normalizeTaunt(raw) {
+    const d = defaultTaunt();
+    const t = raw ?? {};
+    const want = clampInt(t.want, 1, 20, d.want);
+    const max = clampInt(t.max, 1, MAX_RANGE, d.max);
+    return {
+        on: t.on === true,
+        st: idList(t.st, TAUNT_SLOTS),
+        area: idList(t.area, TAUNT_SLOTS),
+        pull: t.pull !== false,
+        rad: clampInt(t.rad, 1, 20, d.rad),
+        want,
+        cap: clampInt(t.cap, want, 30, Math.max(want, d.cap)),
+        min: clampInt(t.min, 0, max, Math.min(d.min, max)),
+        max,
+        amin: clampInt(t.amin, 1, 9, d.amin),
+        re: clampInt(t.re, 0, 120, d.re),
+    };
+}
 export function normalizeSettings(raw) {
     const s = raw ?? {};
     const list = (v) => (Array.isArray(v) ? v.slice(0, MAX_ENTRIES).map((e) => normalizeEntry(e ?? {})) : []);
@@ -45,6 +81,9 @@ export function normalizeSettings(raw) {
         min: clampInt(s.min, 0, max, 0),
         max,
         melee: s.melee !== false,
+        mt: normalizeTaunt(s.mt),
+        pri: idList(s.pri, MAX_MONSTERS).filter((id) => !idList(s.ign, MAX_MONSTERS).includes(id)),
+        ign: idList(s.ign, MAX_MONSTERS),
     };
 }
 export function parseConfig(json) {
@@ -55,6 +94,7 @@ export function parseConfig(json) {
         return {
             cfg: normalizeSettings(raw.cfg),
             spells: Array.isArray(raw.spells) ? raw.spells.filter((s) => s && typeof s.id === "number") : [],
+            mobs: Array.isArray(raw.mobs) ? raw.mobs.filter((m) => m && typeof m.tid === "number") : [],
             radius: typeof raw.radius === "number" ? raw.radius : 12,
             minhp: typeof raw.minhp === "number" ? raw.minhp : 5,
             step: typeof raw.step === "number" ? raw.step : 350,
@@ -140,4 +180,41 @@ export function formatSeconds(ms) {
 }
 export function statusLabel(state) {
     return STATUS_LABELS[state] ?? state;
+}
+export function tauntOptions(config, area) {
+    return config.spells.filter((s) => s.cat === "taunt" && isArea(s) === area);
+}
+export function setTauntSlot(settings, area, index, id) {
+    const slots = [...(area ? settings.mt.area : settings.mt.st)];
+    while (slots.length < TAUNT_SLOTS)
+        slots.push(0);
+    if (id > 0) {
+        const other = slots.indexOf(id);
+        if (other >= 0 && other !== index)
+            slots[other] = slots[index];
+    }
+    slots[index] = id;
+    const clean = slots.filter((v) => v > 0);
+    if (area)
+        settings.mt.area = clean;
+    else
+        settings.mt.st = clean;
+}
+export function monsterMode(settings, tid) {
+    if (settings.ign.includes(tid))
+        return "ignore";
+    if (settings.pri.includes(tid))
+        return "priority";
+    return "normal";
+}
+export function setMonsterMode(settings, tid, mode) {
+    settings.pri = settings.pri.filter((id) => id !== tid);
+    settings.ign = settings.ign.filter((id) => id !== tid);
+    if (mode === "priority" && settings.pri.length < MAX_MONSTERS)
+        settings.pri.push(tid);
+    if (mode === "ignore" && settings.ign.length < MAX_MONSTERS)
+        settings.ign.push(tid);
+}
+export function nextMonsterMode(mode) {
+    return mode === "normal" ? "priority" : mode === "priority" ? "ignore" : "normal";
 }

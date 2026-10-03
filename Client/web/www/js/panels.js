@@ -1,6 +1,8 @@
 // Side panels: vitals, auto-hunt button, buffs, inventory, spellbook and the 1-0 hotkey
 // bar. Plain DOM, drawn from Session state; every action goes to the server through the
 // existing packets (USE, CAST, /autohunt). Nothing here decides game state.
+import { Character } from "./character.js";
+import { Direction } from "./protocol.js";
 import { statusLabel } from "./autohuntconfig.js";
 import { AutoHuntView } from "./autohuntview.js";
 import { dropTarget, setDrag } from "./dnd.js";
@@ -71,6 +73,7 @@ export class Panels {
             stop: () => this.session?.stopAutoHunt(),
             close: () => { this.autoHuntView.root.hidden = true; },
             icon: (graphic) => this.icon(graphic, null),
+            portrait: (monster) => this.portrait(monster),
         });
         $("autohunt-settings").addEventListener("click", () => {
             if (this.autoHuntView.isOpen)
@@ -601,6 +604,42 @@ export class Panels {
             b.textContent = badge;
             cell.appendChild(b);
         }
+    }
+    portrait(monster) {
+        const canvas = document.createElement("canvas");
+        canvas.width = ICON;
+        canvas.height = ICON;
+        canvas.dataset.ready = "0";
+        const live = [...(this.session?.world?.characters.values() ?? [])].find((c) => c.name === monster.name && c.hasBody);
+        const appearance = live?.appearance ?? {
+            bodyId: monster.body,
+            bodyState: monster.body >= 100 ? 1 : Math.max(1, monster.state),
+            hairId: 0,
+            equipment: Array.from({ length: 6 }, () => [0, 0, 0, 0, 0]),
+            hair: [0, 0, 0, 0],
+            invisible: 0,
+            faceId: 0,
+        };
+        const c = new Character({
+            ...appearance, loginId: 0, characterType: 0, name: monster.name, title: "", surname: "", guildName: "",
+            x: 0, y: 0, facing: Direction.Down, hpPercent: 100,
+        }, this.assets);
+        if (!c.hasBody)
+            return canvas;
+        const box = c.bodyBox();
+        const sprite = document.createElement("canvas");
+        sprite.width = box.w;
+        sprite.height = box.h;
+        const sctx = sprite.getContext("2d");
+        sctx.imageSmoothingEnabled = false;
+        c.render(sctx, box.x, box.y);
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        const scale = Math.min(1, ICON / Math.max(box.w, box.h));
+        const w = Math.round(box.w * scale), h = Math.round(box.h * scale);
+        ctx.drawImage(sprite, (ICON - w) >> 1, ICON - h, w, h);
+        canvas.dataset.ready = c.drawReady ? "1" : "0";
+        return canvas;
     }
     icon(graphic, tint) {
         const canvas = document.createElement("canvas");

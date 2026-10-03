@@ -106,6 +106,10 @@ export class Character {
     return this.slots[Slot.Body] !== null;
   }
 
+  get drawReady(): boolean {
+    return this.slots.every((slot) => !slot || !!this.assets.drawable(this.currentFrame(slot), slot.tint));
+  }
+
   get displayName(): string {
     return [this.title, this.name, this.surname].filter((s) => s && s.trim().length > 0).join(" ");
   }

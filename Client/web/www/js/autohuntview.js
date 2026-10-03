@@ -1,9 +1,11 @@
-import { MAX_DISTANCE, MAX_ENTRIES, MAX_RANGE, addEntry, candidates, describeSpell, isArea, isGroup, moveEntry, normalizeSettings, removeEntry, spellFor, statusLabel, } from "./autohuntconfig.js";
+import { MAX_DISTANCE, MAX_ENTRIES, MAX_RANGE, TAUNT_SLOTS, addEntry, candidates, describeSpell, isArea, isGroup, monsterMode, moveEntry, nextMonsterMode, normalizeSettings, removeEntry, setMonsterMode, setTauntSlot, spellFor, statusLabel, tauntOptions, } from "./autohuntconfig.js";
 const TABS = [
     ["atk", "AS", "Attack spells"],
     ["buf", "BS", "Buff spells"],
     ["heal", "HS", "Healing spells"],
+    ["mt", "MT", "Monster Taunt"],
 ];
+const MODE_LABELS = { normal: "Normal", priority: "Priority", ignore: "Ignore" };
 const SAVE_DELAY_MS = 500;
 function el(tag, className, text) {
     const e = document.createElement(tag);
@@ -43,7 +45,7 @@ export class AutoHuntView {
         for (const [key, short, long] of TABS) {
             const b = button(short, long, () => this.showTab(key));
             b.dataset.tab = key;
-            b.append(el("small", undefined, long.replace(" spells", "")));
+            b.append(el("small", undefined, long.replace(" spells", "").replace("Monster ", "")));
             this.tabBar.appendChild(b);
         }
         const footer = el("footer");
@@ -85,7 +87,8 @@ export class AutoHuntView {
         }
         if (config === this.config)
             return;
-        const spellsKey = config.spells.map((s) => `${s.slot}:${s.id}:${s.ok ? 1 : 0}`).join(",");
+        const spellsKey = config.spells.map((s) => `${s.slot}:${s.id}:${s.ok ? 1 : 0}`).join(",") + "|" +
+            config.mobs.map((m) => `${m.tid}:${m.n}`).join(",");
         const incoming = normalizeSettings(structuredClone(config.cfg));
         const same = !!this.settings && JSON.stringify(incoming) === JSON.stringify(this.settings) && spellsKey === this.spellsKey;
         this.config = config;
@@ -96,6 +99,8 @@ export class AutoHuntView {
         this.render();
     }
     showTab(tab) {
+        if (tab === "mt" && this.tab !== "mt" && this.isOpen)
+            this.actions.refresh();
         this.tab = tab;
         for (const b of this.tabBar.querySelectorAll("button"))
             b.classList.toggle("active", b.dataset.tab === tab);
@@ -119,6 +124,10 @@ export class AutoHuntView {
         const settings = this.settings;
         if (!config || !settings)
             return;
+        if (this.tab === "mt") {
+            this.body.replaceChildren(...this.tauntTab(config, settings));
+            return;
+        }
         const nodes = [];
         if (this.tab === "atk")
             nodes.push(this.positioning(settings));
@@ -176,6 +185,126 @@ export class AutoHuntView {
         sync();
         box.append(meleeLabel, keep.row, min.row);
         return box;
+    }
+    tauntTab(config, settings) {
+        const mt = settings.mt;
+        const nodes = [];
+        const head = el("div", "ah-mt-head");
+        head.append(this.checkbox("Auto-Taunt", mt.on, (v) => { mt.on = v; this.changed(true); }), this.checkbox("Progressive Pull", mt.pull, (v) => { mt.pull = v; this.changed(true); }));
+        nodes.push(head);
+        const slots = el("fieldset", "ah-slots");
+        slots.appendChild(el("legend", undefined, "Taunt spells (slot 1, then slot 2)"));
+        for (const area of [false, true]) {
+            const options = tauntOptions(config, area);
+            const chosen = area ? mt.area : mt.st;
+            const row = el("div", "ah-slot-row");
+            row.appendChild(el("span", "ah-slot-label", area ? "Area" : "Single"));
+            for (let i = 0; i < TAUNT_SLOTS; i++)
+                row.appendChild(this.tauntSlot(config, settings, area, i, chosen[i] ?? 0, options));
+            slots.appendChild(row);
+            if (options.length === 0)
+                slots.appendChild(el("small", "ah-note", area ? "You don't know any area taunts." : "You don't know any single-target taunts."));
+        }
+        nodes.push(slots);
+        const pull = el("fieldset", "ah-pull");
+        pull.appendChild(el("legend", undefined, "Pull"));
+        pull.hidden = !mt.on;
+        const tiles = (v) => `${v} ${v === 1 ? "tile" : "tiles"}`;
+        const want = this.slider("Desired", mt.want, 1, 20, (v) => {
+            mt.want = v;
+            if (mt.cap < v) {
+                mt.cap = v;
+                cap.set(v);
+            }
+            this.changed();
+        }, (v) => `${v} monsters`);
+        const cap = this.slider("Maximum", mt.cap, 1, 30, (v) => {
+            mt.cap = Math.max(v, mt.want);
+            if (mt.cap !== v)
+                cap.set(mt.cap);
+            this.changed();
+        }, (v) => `${v} monsters`);
+        const near = this.slider("Min distance", mt.min, 0, MAX_RANGE, (v) => {
+            mt.min = Math.min(v, mt.max);
+            if (mt.min !== v)
+                near.set(mt.min);
+            this.changed();
+        }, (v) => (v === 0 ? "any" : tiles(v)));
+        const far = this.slider("Taunt range", mt.max, 1, MAX_RANGE, (v) => {
+            mt.max = v;
+            if (mt.min > v) {
+                mt.min = v;
+                near.set(v);
+            }
+            this.changed();
+        }, tiles);
+        pull.append(this.slider("Pull radius", mt.rad, 1, 20, (v) => { mt.rad = v; this.changed(); }, tiles).row, want.row, cap.row, near.row, far.row, this.slider("Area needs", mt.amin, 1, 9, (v) => { mt.amin = v; this.changed(); }, (v) => `${v} monsters`).row, this.slider("Re-taunt", mt.re, 0, 120, (v) => { mt.re = v; this.changed(); }, (v) => (v === 0 ? "never" : `after ${v}s`)).row);
+        nodes.push(pull);
+        const mobs = el("fieldset", "ah-mobs");
+        mobs.appendChild(el("legend", undefined, "Monsters on this map"));
+        mobs.appendChild(el("small", "ah-note", "Click to cycle: Normal → Priority → Ignore. Used by the whole auto-hunt; an ignored monster is still fought when it attacks you."));
+        if (config.mobs.length === 0)
+            mobs.appendChild(el("p", "ah-note", "No monsters on this map."));
+        const list = el("ul", "ah-mob-list");
+        for (const mob of config.mobs)
+            list.appendChild(this.monsterRow(settings, mob));
+        mobs.appendChild(list);
+        nodes.push(mobs);
+        return nodes;
+    }
+    tauntSlot(config, settings, area, index, id, options) {
+        const box = el("label", "ah-slot");
+        const spell = id ? spellFor(config, id) : undefined;
+        const icon = spell ? this.actions.icon(spell.gfx) : el("canvas");
+        icon.classList.add("ah-icon");
+        const select = el("select");
+        const none = el("option", undefined, `Slot ${index + 1}: none`);
+        none.value = "0";
+        select.appendChild(none);
+        for (const option of options) {
+            const o = el("option", undefined, option.ok ? option.name : `${option.name} (wrong class)`);
+            o.value = String(option.id);
+            o.title = describeSpell(option);
+            select.appendChild(o);
+        }
+        if (id && !spell) {
+            const o = el("option", undefined, `Spell #${id} (not known)`);
+            o.value = String(id);
+            select.appendChild(o);
+        }
+        select.value = String(id);
+        select.title = spell ? describeSpell(spell) : "";
+        select.addEventListener("change", () => {
+            setTauntSlot(settings, area, index, Number(select.value));
+            this.changed(true);
+        });
+        box.append(icon, select);
+        return box;
+    }
+    monsterRow(settings, mob) {
+        const li = el("li", "ah-mob");
+        const mode = monsterMode(settings, mob.tid);
+        li.dataset.mode = mode;
+        const pic = this.actions.portrait(mob);
+        pic.classList.add("ah-portrait");
+        const names = el("div", "ah-names");
+        names.append(el("b", undefined, mob.name), el("small", undefined, `Level ${mob.lvl} · ${mob.n} alive`));
+        const toggle = button(MODE_LABELS[mode], "Normal → Priority → Ignore", () => {
+            setMonsterMode(settings, mob.tid, nextMonsterMode(monsterMode(settings, mob.tid)));
+            this.changed(true);
+        }, "ah-mode");
+        toggle.dataset.mode = mode;
+        li.append(pic, names, toggle);
+        return li;
+    }
+    checkbox(label, checked, onChange) {
+        const input = el("input");
+        input.type = "checkbox";
+        input.checked = checked;
+        input.addEventListener("change", () => onChange(input.checked));
+        const l = el("label", "ah-check");
+        l.append(input, el("span", undefined, label));
+        return l;
     }
     row(config, settings, entry, index) {
         const key = this.tab;

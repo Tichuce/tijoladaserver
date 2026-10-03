@@ -53,6 +53,7 @@ namespace Goose.Events
             var caster = new AutoHuntCaster(player, world);
 
             if (caster.TryHeal(settings) || caster.TryBuff(settings)) return;
+            if (new AutoHuntPuller(player, world, caster, settings).TryTaunt(rooted)) return;
 
             NPC? target = player.AutoHuntTarget;
             if (target is not null && !IsHuntable(player, target, world))
@@ -62,8 +63,19 @@ namespace Goose.Events
 
             if (target is null)
             {
-                target = FindTarget(player, world);
+                target = FindTarget(player, world, settings);
                 player.AutoHuntTarget = target;
+                player.AutoHuntFailedSteps = 0;
+                player.AutoHuntChaseSteps = 0;
+                player.AutoHuntWaitTicks = 0;
+            }
+
+            if (target is not null && settings.Taunt.Enabled && !Touching(player, target) &&
+                player.Map.GetNPCsInRange(player).FirstOrDefault(n => n.AggroTarget == player && Touching(player, n) &&
+                    IsHuntable(player, n, world)) is { } attacker)
+            {
+                target = attacker;
+                player.AutoHuntTarget = attacker;
                 player.AutoHuntFailedSteps = 0;
                 player.AutoHuntChaseSteps = 0;
             }
@@ -97,8 +109,15 @@ namespace Goose.Events
             }
 
             int distance = Math.Abs(target.MapX - player.MapX) + Math.Abs(target.MapY - player.MapY);
+            if (distance != 1 && AutoHuntPuller.ShouldWaitForPull(player, target, settings))
+            {
+                player.SetAutoHuntStatus(world, "pulling", "Gathering " + target.Name);
+                return;
+            }
+
             if (distance == 1)
             {
+                player.AutoHuntWaitTicks = 0;
                 Face(player, DirectionTo(player, target), world);
 
                 long lastAttack = player.LastAttack;
@@ -208,13 +227,22 @@ namespace Goose.Events
                     <= world.Settings.AutoHuntRadius;
         }
 
-        private static NPC? FindTarget(Player player, GameWorld world)
+        // An ignored monster is still fought back while it is attacking the hunter.
+        private static NPC? FindTarget(Player player, GameWorld world, AutoHuntSettings settings)
         {
             return player.Map.GetNPCsInRange(player)
-                .Where(n => !player.AutoHuntIgnored.Contains(n) && IsHuntable(player, n, world))
-                .OrderBy(n => Math.Abs(n.MapX - player.MapX) + Math.Abs(n.MapY - player.MapY))
+                .Where(n => !player.AutoHuntIgnored.Contains(n) && IsHuntable(player, n, world) &&
+                    (!settings.IsIgnored(n) || n.AggroTarget == player))
+                .OrderBy(n => settings.PriorityOf(n))
+                .ThenBy(n => Math.Abs(n.MapX - player.MapX) + Math.Abs(n.MapY - player.MapY))
                 .FirstOrDefault();
         }
+
+        private static bool Touching(Player player, ICharacter other)
+            => Math.Abs(other.MapX - player.MapX) + Math.Abs(other.MapY - player.MapY) == 1;
+
+        public static bool StepToward(Player player, int targetX, int targetY, GameWorld world)
+            => Step(player, targetX, targetY, world);
 
         private static bool Step(Player player, int targetX, int targetY, GameWorld world)
         {

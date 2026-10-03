@@ -150,71 +150,81 @@ namespace Goose.Events
         {
             SpellEffect effect = spell.SpellEffect;
             int needed = Math.Max(1, entry.MinTargets);
-            bool directional = AutoHuntSpells.IsDirectional(effect);
-            Direction[] facings = directional ? AllDirections : new[] { this.player.Facing };
 
             if (spell.Target == Spell.SpellTargets.Group) return null;
 
-            if (spell.Target == Spell.SpellTargets.Self)
-            {
-                if (effect.TargetType == SpellEffect.TargetTypes.Target) return null;
-
-                (int count, Direction facing) = this.BestFacing(effect, this.player.MapX, this.player.MapY, facings);
-                if (count < needed) return null;
-                return (this.player, directional ? facing : null);
-            }
-
             if (effect.TargetType == SpellEffect.TargetTypes.Target)
             {
-                if (needed > 1) return null;
+                if (spell.Target == Spell.SpellTargets.Self || needed > 1) return null;
                 if (AutoHuntSpells.Distance(this.player, target) > entry.Range || !effect.CanCastSpell(this.player, target)) return null;
                 return (target, null);
             }
 
-            var candidates = new List<NPC> { target };
+            var plan = this.AreaPlan(spell, entry.Range, target, _ => true);
+            if (plan is not { } chosen || chosen.Hit.Count < needed) return null;
+            return (chosen.Target, chosen.Facing);
+        }
+
+        internal (ICharacter Target, Direction? Facing, List<NPC> Hit)? AreaPlan(Spell spell, int range, NPC? preferred, Func<NPC, bool> counts)
+        {
+            SpellEffect effect = spell.SpellEffect;
+            bool directional = AutoHuntSpells.IsDirectional(effect);
+            Direction[] facings = directional ? AllDirections : new[] { this.player.Facing };
+
+            if (spell.Target == Spell.SpellTargets.Group || effect.TargetType == SpellEffect.TargetTypes.Target) return null;
+
+            if (spell.Target == Spell.SpellTargets.Self)
+            {
+                var (hit, facing) = this.BestFacing(effect, this.player.MapX, this.player.MapY, facings, counts);
+                if (hit.Count == 0) return null;
+                return (this.player, directional ? facing : null, hit);
+            }
+
+            var candidates = new List<NPC>();
+            if (preferred is not null) candidates.Add(preferred);
             candidates.AddRange(this.player.Map.GetNPCsInRange(this.player)
-                .Where(n => n != target && AutoHuntEvent.IsHuntable(this.player, n, this.world)));
+                .Where(n => n != preferred && AutoHuntEvent.IsHuntable(this.player, n, this.world)));
 
             NPC? bestCentre = null;
-            int bestCount = 0;
+            List<NPC> best = [];
             Direction bestFacing = this.player.Facing;
             foreach (var centre in candidates)
             {
-                if (AutoHuntSpells.Distance(this.player, centre) > entry.Range || !effect.CanCastSpell(this.player, centre)) continue;
+                if (AutoHuntSpells.Distance(this.player, centre) > range || !effect.CanCastSpell(this.player, centre)) continue;
 
-                (int count, Direction facing) = this.BestFacing(effect, centre.MapX, centre.MapY, facings);
-                if (count > bestCount)
+                var (hit, facing) = this.BestFacing(effect, centre.MapX, centre.MapY, facings, counts);
+                if (hit.Count > best.Count)
                 {
-                    bestCount = count;
+                    best = hit;
                     bestCentre = centre;
                     bestFacing = facing;
                 }
             }
 
-            if (bestCentre is null || bestCount < needed) return null;
-            return (bestCentre, directional ? bestFacing : null);
+            if (bestCentre is null) return null;
+            return (bestCentre, directional ? bestFacing : null, best);
         }
 
-        private (int Count, Direction Facing) BestFacing(SpellEffect effect, int ox, int oy, Direction[] facings)
+        private (List<NPC> Hit, Direction Facing) BestFacing(SpellEffect effect, int ox, int oy, Direction[] facings, Func<NPC, bool> counts)
         {
-            int bestCount = -1;
-            Direction best = facings[0];
+            List<NPC> best = [];
+            Direction bestFacing = facings[0];
             foreach (var facing in facings)
             {
-                int count = this.MonstersHit(effect, ox, oy, facing);
-                if (count > bestCount)
+                var hit = this.MonstersHit(effect, ox, oy, facing, counts);
+                if (hit.Count > best.Count)
                 {
-                    bestCount = count;
-                    best = facing;
+                    best = hit;
+                    bestFacing = facing;
                 }
             }
-            return (Math.Max(0, bestCount), best);
+            return (best, bestFacing);
         }
 
         // An area that would also land on another player (PvP maps) is never chosen.
-        private int MonstersHit(SpellEffect effect, int ox, int oy, Direction facing)
+        private List<NPC> MonstersHit(SpellEffect effect, int ox, int oy, Direction facing, Func<NPC, bool> counts)
         {
-            int count = 0;
+            var hit = new List<NPC>();
             foreach (var (x, y) in AutoHuntSpells.Tiles(effect, ox, oy, facing))
             {
                 ICharacter? character = this.player.Map.GetCharacterAt(x, y);
@@ -222,15 +232,15 @@ namespace Goose.Events
                 {
                     if (npc.State == NPC.States.Alive && npc.NPCType == NPCTemplate.Types.Monster &&
                         (!npc.IsInvisible || this.player.CanSeeInvisible) &&
-                        effect.CanCastSpell(this.player, npc))
-                        count++;
+                        effect.CanCastSpell(this.player, npc) && counts(npc))
+                        hit.Add(npc);
                 }
                 else if (character is Player other && other != this.player && effect.CanCastSpell(this.player, other))
                 {
-                    return 0;
+                    return [];
                 }
             }
-            return effect.OnlyHitsOneNPC ? Math.Min(count, 1) : count;
+            return effect.OnlyHitsOneNPC && hit.Count > 1 ? hit.GetRange(0, 1) : hit;
         }
 
         private List<Player> Allies()
@@ -252,8 +262,14 @@ namespace Goose.Events
         {
             slot = 0;
             spell = null!;
-            if (!entry.Enabled) return false;
-            if (AutoHuntSpells.FindSlot(this.player, entry.SpellId) is not int found) return false;
+            return entry.Enabled && this.ReadySpell(entry.SpellId, entry.MinMPPercent, out slot, out spell);
+        }
+
+        internal bool ReadySpell(int spellId, int minMPPercent, out int slot, out Spell spell)
+        {
+            slot = 0;
+            spell = null!;
+            if (AutoHuntSpells.FindSlot(this.player, spellId) is not int found) return false;
 
             Spell? known = this.player.Spellbook.GetSlot(found);
             if (known?.SpellEffect is null) return false;
@@ -263,7 +279,7 @@ namespace Goose.Events
             long cooldown = (long)((known.Aether / 1000.0) * this.world.TimerFrequency);
             if (this.world.TimeNow - this.player.Spellbook.GetSlotLastCast(found) < cooldown) return false;
             if (this.player.CurrentHP <= known.HPStaticCost || this.player.CurrentMP < known.MPStaticCost) return false;
-            if (entry.MinMPPercent > 0 && (this.player.MaxMP <= 0 || this.player.CurrentMP * 100 < this.player.MaxMP * entry.MinMPPercent)) return false;
+            if (minMPPercent > 0 && (this.player.MaxMP <= 0 || this.player.CurrentMP * 100 < this.player.MaxMP * minMPPercent)) return false;
             if (!known.SpellEffect.WorksInPVP && this.player.Map.CanPVP) return false;
 
             slot = found;
@@ -271,14 +287,14 @@ namespace Goose.Events
             return true;
         }
 
-        private bool Cast(int slot, Spell spell, ICharacter target)
+        internal bool Cast(int slot, Spell spell, ICharacter target)
         {
             long before = this.player.Spellbook.GetSlotLastCast(slot);
             this.player.CastSpell(slot, target, this.world);
             return this.player.Spellbook.GetSlotLastCast(slot) != before;
         }
 
-        private void Backoff(Spell spell, int seconds)
+        internal void Backoff(Spell spell, int seconds)
         {
             this.player.AutoHuntBackoff[spell.ID] = this.world.TimeNow + seconds * this.world.TimerFrequency;
         }

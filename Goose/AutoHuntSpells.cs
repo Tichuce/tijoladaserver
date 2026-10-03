@@ -111,10 +111,40 @@ namespace Goose
                         gfx = spell.Graphic,
                         file = spell.GraphicFile,
                         ok = player.Class is null || player.Class.CanUse(spell.ClassRestrictions),
+                        aoe = IsAreaTaunt(spell),
                     });
                 }
             }
             return spells;
+        }
+
+        public static bool IsAreaTaunt(Spell spell)
+            => spell.SpellEffect is not null && spell.SpellEffect.TargetType != SpellEffect.TargetTypes.Target;
+
+        public static object MonstersOnMap(Player player)
+        {
+            if (player.Map is null) return new List<object>();
+
+            return player.Map.NPCs
+                .Where(n => n.NPCType == NPCTemplate.Types.Monster && n.CanBeKilled)
+                .GroupBy(n => n.NPCTemplateID)
+                .Select(g =>
+                {
+                    NPC sample = g.First();
+                    return new
+                    {
+                        tid = g.Key,
+                        name = sample.Name,
+                        lvl = sample.Level,
+                        n = g.Count(n => n.State == NPC.States.Alive),
+                        body = sample.BodyID,
+                        state = sample.BodyState,
+                    };
+                })
+                .OrderBy(m => m.lvl)
+                .ThenBy(m => m.name, StringComparer.OrdinalIgnoreCase)
+                .Take(40)
+                .ToList<object>();
         }
 
         public static IEnumerable<(int X, int Y)> Tiles(SpellEffect effect, int ox, int oy, Direction facing)

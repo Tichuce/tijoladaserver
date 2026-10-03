@@ -13,6 +13,20 @@ export interface AutoHuntEntry {
   re: number;
 }
 
+export interface AutoHuntTaunt {
+  on: boolean;
+  st: number[];
+  area: number[];
+  pull: boolean;
+  rad: number;
+  want: number;
+  cap: number;
+  min: number;
+  max: number;
+  amin: number;
+  re: number;
+}
+
 export interface AutoHuntSettings {
   v: number;
   atk: AutoHuntEntry[];
@@ -21,7 +35,21 @@ export interface AutoHuntSettings {
   min: number;
   max: number;
   melee: boolean;
+  mt: AutoHuntTaunt;
+  pri: number[];
+  ign: number[];
 }
+
+export interface AutoHuntMonster {
+  tid: number;
+  name: string;
+  lvl: number;
+  n: number;
+  body: number;
+  state: number;
+}
+
+export type MonsterMode = "normal" | "priority" | "ignore";
 
 export interface AutoHuntSpell {
   slot: number;
@@ -44,6 +72,7 @@ export interface AutoHuntSpell {
 export interface AutoHuntConfig {
   cfg: AutoHuntSettings;
   spells: AutoHuntSpell[];
+  mobs: AutoHuntMonster[];
   radius: number;
   minhp: number;
   step: number;
@@ -55,6 +84,8 @@ export type AutoHuntStatusState =
 export const MAX_ENTRIES = 10;
 export const MAX_RANGE = 12;
 export const MAX_DISTANCE = 12;
+export const TAUNT_SLOTS = 2;
+export const MAX_MONSTERS = 30;
 
 export const LISTS: Record<ListKey, SpellCategory> = { atk: "attack", buf: "buff", heal: "heal" };
 
@@ -72,8 +103,12 @@ export const STATUS_LABELS: Record<string, string> = {
 
 const AREA_NAMES = ["Single target", "Line", "Cross (X)", "Plus (+)", "Random area", "Area", "Cone"];
 
+export function defaultTaunt(): AutoHuntTaunt {
+  return { on: false, st: [], area: [], pull: true, rad: 8, want: 4, cap: 6, min: 2, max: 6, amin: 2, re: 8 };
+}
+
 export function emptySettings(): AutoHuntSettings {
-  return { v: 1, atk: [], buf: [], heal: [], min: 0, max: 1, melee: true };
+  return { v: 1, atk: [], buf: [], heal: [], min: 0, max: 1, melee: true, mt: defaultTaunt(), pri: [], ign: [] };
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -93,6 +128,36 @@ function normalizeEntry(raw: Partial<AutoHuntEntry>): AutoHuntEntry {
   };
 }
 
+function idList(value: unknown, max: number): number[] {
+  if (!Array.isArray(value)) return [];
+  const out: number[] = [];
+  for (const v of value) {
+    if (typeof v === "number" && Number.isInteger(v) && v > 0 && !out.includes(v)) out.push(v);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export function normalizeTaunt(raw: Partial<AutoHuntTaunt> | null | undefined): AutoHuntTaunt {
+  const d = defaultTaunt();
+  const t = raw ?? {};
+  const want = clampInt(t.want, 1, 20, d.want);
+  const max = clampInt(t.max, 1, MAX_RANGE, d.max);
+  return {
+    on: t.on === true,
+    st: idList(t.st, TAUNT_SLOTS),
+    area: idList(t.area, TAUNT_SLOTS),
+    pull: t.pull !== false,
+    rad: clampInt(t.rad, 1, 20, d.rad),
+    want,
+    cap: clampInt(t.cap, want, 30, Math.max(want, d.cap)),
+    min: clampInt(t.min, 0, max, Math.min(d.min, max)),
+    max,
+    amin: clampInt(t.amin, 1, 9, d.amin),
+    re: clampInt(t.re, 0, 120, d.re),
+  };
+}
+
 export function normalizeSettings(raw: Partial<AutoHuntSettings> | null | undefined): AutoHuntSettings {
   const s = raw ?? {};
   const list = (v: unknown) => (Array.isArray(v) ? v.slice(0, MAX_ENTRIES).map((e) => normalizeEntry(e ?? {})) : []);
@@ -105,6 +170,9 @@ export function normalizeSettings(raw: Partial<AutoHuntSettings> | null | undefi
     min: clampInt(s.min, 0, max, 0),
     max,
     melee: s.melee !== false,
+    mt: normalizeTaunt(s.mt),
+    pri: idList(s.pri, MAX_MONSTERS).filter((id) => !idList(s.ign, MAX_MONSTERS).includes(id)),
+    ign: idList(s.ign, MAX_MONSTERS),
   };
 }
 
@@ -115,6 +183,7 @@ export function parseConfig(json: string): AutoHuntConfig | null {
     return {
       cfg: normalizeSettings(raw.cfg),
       spells: Array.isArray(raw.spells) ? raw.spells.filter((s) => s && typeof s.id === "number") : [],
+      mobs: Array.isArray(raw.mobs) ? raw.mobs.filter((m) => m && typeof m.tid === "number") : [],
       radius: typeof raw.radius === "number" ? raw.radius : 12,
       minhp: typeof raw.minhp === "number" ? raw.minhp : 5,
       step: typeof raw.step === "number" ? raw.step : 350,
@@ -201,4 +270,38 @@ export function formatSeconds(ms: number): string {
 
 export function statusLabel(state: string): string {
   return STATUS_LABELS[state] ?? state;
+}
+
+export function tauntOptions(config: AutoHuntConfig, area: boolean): AutoHuntSpell[] {
+  return config.spells.filter((s) => s.cat === "taunt" && isArea(s) === area);
+}
+
+export function setTauntSlot(settings: AutoHuntSettings, area: boolean, index: number, id: number): void {
+  const slots = [...(area ? settings.mt.area : settings.mt.st)];
+  while (slots.length < TAUNT_SLOTS) slots.push(0);
+  if (id > 0) {
+    const other = slots.indexOf(id);
+    if (other >= 0 && other !== index) slots[other] = slots[index];
+  }
+  slots[index] = id;
+  const clean = slots.filter((v) => v > 0);
+  if (area) settings.mt.area = clean;
+  else settings.mt.st = clean;
+}
+
+export function monsterMode(settings: AutoHuntSettings, tid: number): MonsterMode {
+  if (settings.ign.includes(tid)) return "ignore";
+  if (settings.pri.includes(tid)) return "priority";
+  return "normal";
+}
+
+export function setMonsterMode(settings: AutoHuntSettings, tid: number, mode: MonsterMode): void {
+  settings.pri = settings.pri.filter((id) => id !== tid);
+  settings.ign = settings.ign.filter((id) => id !== tid);
+  if (mode === "priority" && settings.pri.length < MAX_MONSTERS) settings.pri.push(tid);
+  if (mode === "ignore" && settings.ign.length < MAX_MONSTERS) settings.ign.push(tid);
+}
+
+export function nextMonsterMode(mode: MonsterMode): MonsterMode {
+  return mode === "normal" ? "priority" : mode === "priority" ? "ignore" : "normal";
 }

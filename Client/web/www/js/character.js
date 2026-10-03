@@ -83,6 +83,9 @@ export class Character {
     get hasBody() {
         return this.slots[Slot.Body] !== null;
     }
+    get drawReady() {
+        return this.slots.every((slot) => !slot || !!this.assets.drawable(this.currentFrame(slot), slot.tint));
+    }
     get displayName() {
         return [this.title, this.name, this.surname].filter((s) => s && s.trim().length > 0).join(" ");
     }
